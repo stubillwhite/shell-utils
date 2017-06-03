@@ -1,0 +1,16 @@
+#!/bin/bash
+
+export SPARK_HOME=~/Dev/tools/spark-2.1.1-bin-hadoop2.7
+
+PWD=$(dirname $0)
+PACKAGES=com.typesafe:config:1.3.1,com.amazonaws:aws-java-sdk:1.7.4,org.apache.hadoop:hadoop-aws:2.7.3
+REPOSITORIES=http://repo.typesafe.com/typesafe/ivy-releases,http://central.maven.org/maven2/
+OPTIONS=
+OPTIONS+=\ --master\ local[*]
+OPTIONS+=\ --conf\ spark.driver.memory=1G
+OPTIONS+=\ --conf\ spark.driver.maxResultSize=0
+OPTIONS+=\ --driver-memory\ 5G\ --executor-memory\ 5G
+SPARKSHELL=$SPARK_HOME/bin/spark-shell
+
+export SPARK_LOCAL_IP=127.0.0.1
+$SPARKSHELL --packages $PACKAGES --repositories $REPOSITORIES $OPTIONS -i $PWD/run-spark-shell.scala
