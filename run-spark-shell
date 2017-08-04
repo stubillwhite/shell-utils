@@ -9,6 +9,7 @@ OPTIONS=
 OPTIONS+=\ --master\ local[*]
 OPTIONS+=\ --conf\ spark.driver.memory=1G
 OPTIONS+=\ --conf\ spark.driver.maxResultSize=0
+OPTIONS+=\ --conf\ spark.ui.port=5050
 OPTIONS+=\ --driver-memory\ 5G\ --executor-memory\ 5G
 SPARKSHELL=$SPARK_HOME/bin/spark-shell
 
