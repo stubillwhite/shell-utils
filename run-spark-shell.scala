@@ -18,7 +18,4 @@ if (!(sys.env.contains("AWS_ACCESS_KEY_ID") && sys.env.contains("AWS_SECRET_ACCE
   hadoopConfiguration.set("fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
   hadoopConfiguration.set("fs.s3a.awsAccessKeyId", awsAccessKey)
   hadoopConfiguration.set("fs.s3a.awsSecretAccessKey", awsSecretKey)
-
-  val credentials = new BasicAWSCredentials(awsAccessKey,awsSecretKey)
-  val s3Client = new AmazonS3Client(credentials)
 }
