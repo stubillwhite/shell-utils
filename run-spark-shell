@@ -11,6 +11,7 @@ OPTIONS+=\ --conf\ spark.driver.memory=1G
 OPTIONS+=\ --conf\ spark.driver.maxResultSize=0
 OPTIONS+=\ --conf\ spark.ui.port=5050
 OPTIONS+=\ --driver-memory\ 5G\ --executor-memory\ 5G
+OPTIONS+=\ --conf\ spark.sql.parquet.writeLegacyFormat=true
 SPARKSHELL=$SPARK_HOME/bin/spark-shell
 
 export SPARK_LOCAL_IP=127.0.0.1
