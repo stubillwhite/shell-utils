@@ -1,0 +1,4 @@
+#!/bin/bash
+pushd ~/Dev/my-stuff/personal-wiki || exit 1
+./run-gollum.sh
+popd || exit 1
