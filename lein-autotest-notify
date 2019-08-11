@@ -1,0 +1,12 @@
+#!/bin/bash
+
+msg=$1
+
+if [[ $msg =~ "Failed" ]];
+then
+    title="FAILURE"
+else
+    title="SUCCESS"
+fi
+
+osascript -e "display notification \"$msg\" with title \"$title\""
