@@ -1,17 +1,32 @@
 #!/bin/bash
 
-export SPARK_HOME=~/Dev/tools/spark
+# Pre-requisites
+#
+# Spark without Hadoop
+#   wget http://apache.mirrors.nublue.co.uk/spark/spark-2.4.4/spark-2.4.4-bin-without-hadoop.tgz
+#
+# Hadoop
+#   wget http://www.mirrorservice.org/sites/ftp.apache.org/hadoop/common/hadoop-2.8.5/hadoop-2.8.5.tar.gz
+#
+# Create a $SPARK_HOME/conf/spark-env.sh in file with the following
+#   export SPARK_DIST_CLASSPATH=$(~/Dev/tools/dist/hadoop-2.8.5/bin/hadoop classpath)
+
+export SPARK_HOME=~/Dev/tools/dist/spark-2.4.4-bin-without-hadoop/
 
 PWD=$(dirname $0)
-PACKAGES=com.typesafe:config:1.3.1,com.amazonaws:aws-java-sdk:1.7.4,org.apache.hadoop:hadoop-aws:2.7.3,com.databricks:spark-xml_2.11:0.4.1,com.databricks:spark-csv_2.11:1.5.0,com.crealytics:spark-excel_2.11:0.9.8
+
+# Note that the AWS version must match the version built with Hadoop -- see http://hadoop.apache.org/docs/r3.1.0/hadoop-aws/tools/hadoop-aws/troubleshooting_s3a.html#Classpath_Setup
+HADOOP_VERSION=2.8.5
+AWS_VERSION=1.10.6
+
+PACKAGES=com.amazonaws:aws-java-sdk:$AWS_VERSION,org.apache.hadoop:hadoop-aws:$HADOOP_VERSION,org.apache.hadoop:hadoop-common:$HADOOP_VERSION
 REPOSITORIES=http://repo.typesafe.com/typesafe/ivy-releases,http://central.maven.org/maven2/
 OPTIONS=
 OPTIONS+=\ --master\ local[*]
-OPTIONS+=\ --conf\ spark.driver.memory=1G
 OPTIONS+=\ --conf\ spark.driver.maxResultSize=0
 OPTIONS+=\ --conf\ spark.ui.port=5050
-OPTIONS+=\ --driver-memory\ 5G\ --executor-memory\ 5G
 OPTIONS+=\ --conf\ spark.sql.parquet.writeLegacyFormat=true
+OPTIONS+=\ --driver-memory\ 5G\ --executor-memory\ 5G
 SPARKSHELL=$SPARK_HOME/bin/spark-shell
 
 export SPARK_LOCAL_IP=127.0.0.1
