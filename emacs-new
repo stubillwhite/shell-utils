@@ -1,2 +1,0 @@
-#!/bin/bash
-emacs -q --load "~/Dev/my-stuff/.emacs.d.new/init.el"
