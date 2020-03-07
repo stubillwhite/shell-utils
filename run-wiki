@@ -1,4 +1,5 @@
 #!/bin/bash
 pushd ~/Dev/my-stuff/personal-wiki || exit 1
+git pull -r
 ./run-gollum.sh
 popd || exit 1
