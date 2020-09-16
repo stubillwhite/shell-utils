@@ -19,8 +19,16 @@ PWD=$(dirname $0)
 HADOOP_VERSION=2.8.5
 AWS_VERSION=1.10.6
 
-PACKAGES=com.amazonaws:aws-java-sdk:$AWS_VERSION,org.apache.hadoop:hadoop-aws:$HADOOP_VERSION,org.apache.hadoop:hadoop-common:$HADOOP_VERSION
+SCALA_VERSION=2.11
+
+PACKAGES=
+PACKAGES+=com.amazonaws:aws-java-sdk:$AWS_VERSION
+PACKAGES+=,org.apache.hadoop:hadoop-aws:$HADOOP_VERSION
+PACKAGES+=,org.apache.hadoop:hadoop-common:$HADOOP_VERSION
+PACKAGES+=,org.apache.spark:spark-avro_$SCALA_VERSION:2.4.4
+
 REPOSITORIES=http://repo.typesafe.com/typesafe/ivy-releases,http://central.maven.org/maven2/
+
 OPTIONS=
 OPTIONS+=\ --master\ local[*]
 OPTIONS+=\ --conf\ spark.driver.maxResultSize=0
