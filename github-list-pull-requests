@@ -1,25 +1,33 @@
 #!/usr/local/bin/zsh
 
-TOKEN="INSERT-TOKEN"
+TOKEN="92d70754d72063a176b735e8a674cb8693e72202"
 GITHUB_USERNAME="stuw-els"
-EMAIL="INSERT-EMAIL"
+EMAIL="s.white.1@elsevier.com"
 
 function list-all-pull-requests() {
+    local fnam=$1
+
     local page=0
     local response
+    local incomplete
 
     local queryUrl="https://api.github.com/search/issues?q=state%3Aopen+author%3A${GITHUB_USERNAME}+type%3Apr"
 
-    echo '['
+    local tmpfile=$(mktemp)
+
+    echo > "${fnam}"
+    echo '[' >> "${fnam}"
     while : ;
     do
-      response=$(curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}?per_page=100\&page=${page}")
-      echo $response
-      [[ "$(echo "${response}" | jq '.incomplete_results')" == "false" ]] && break
-      echo ","
+      curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}?per_page=100\&page=${page}" > "${tmpfile}"
+      cat "${tmpfile}" >> "${fnam}"
+
+      incomplete=$(cat "${tmpfile}" | jq '.incomplete_results')
+      [[ "${incomplete}" == "false" ]] && break
+      echo "," >> "${fnam}"
       page=$((page + 1))
     done
-    echo ']'
+    echo ']' >> "${fnam}"
 }
 
 function pull-request-details() {
@@ -30,8 +38,12 @@ function pull-request-details() {
         | jq --raw-output '[.head.repo.name, .state, (if .comments > 0 or .review_comments > 0 then "comments" else "no-comments" end), .html_url, (.title | tojson)] | @tsv'
 }
 
+tmpfile=$(mktemp)
+
+list-all-pull-requests "${tmpfile}"
+
 while IFS=, read -rA url
 do
     pull-request-details "${url}"
-done < <(list-all-pull-requests | jq --raw-output '.[].items[].pull_request.url') \
+done < <(cat "${tmpfile}" | jq --raw-output '.[].items[].pull_request.url') \
     | column -t -s $'\t'
