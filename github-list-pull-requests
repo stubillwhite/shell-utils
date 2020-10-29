@@ -1,6 +1,6 @@
 #!/usr/local/bin/zsh
 
-TOKEN="92d70754d72063a176b735e8a674cb8693e72202"
+TOKEN="INSERT-TOKEN"
 GITHUB_USERNAME="stuw-els"
 EMAIL="s.white.1@elsevier.com"
 
