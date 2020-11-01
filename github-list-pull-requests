@@ -1,8 +1,10 @@
 #!/usr/local/bin/zsh
 
-TOKEN="INSERT-TOKEN"
-GITHUB_USERNAME="stuw-els"
-EMAIL="s.white.1@elsevier.com"
+TOKEN="$(git config --get user.token)"
+EMAIL="$(git config --get user.email)"
+
+[[ "${EMAIL}" == "s.white.1@elsevier.com" ]] && GITHUB_USERNAME="stuw-els"
+[[ "${EMAIL}" == "stubillwhite@gmail.com" ]] && GITHUB_USERNAME="stubillwhite"
 
 function list-all-pull-requests() {
     local fnam=$1
@@ -37,6 +39,16 @@ function pull-request-details() {
     curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}" \
         | jq --raw-output '[.head.repo.name, .state, (if .comments > 0 or .review_comments > 0 then "comments" else "no-comments" end), .html_url, (.title | tojson)] | @tsv'
 }
+
+if ([[ -z "${TOKEN}" ]] || [[ -z "${EMAIL}" ]] || [[ -z "${GITHUB_USERNAME}" ]]); then 
+    echo 'Unable to find read token, email, and GitHub username'
+    echo 'Check the output of:'
+    echo '  git config --get user.token'
+    echo '  git config --get user.email'
+    return 1
+fi
+
+echo "Pull requests for ${GITHUB_USERNAME}:"
 
 tmpfile=$(mktemp)
 
