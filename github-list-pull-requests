@@ -37,13 +37,13 @@ function pull-request-details() {
     local reviewCount=$(curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}/reviews" | jq --raw-output 'length')
 
     curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}" \
-        | jq --raw-output --arg reviews "${reviewCount}" '[.head.repo.name, 
-                                                           .state, 
-                                                           (if $reviews > 0 then "has-reviews" else "no-reviews" end), 
-                                                           (if .comments > 0 or .review_comments > 0 then "has-comments" else "no-comments" end), 
-                                                           .html_url, 
-                                                           (.title | tojson) 
-                                                          ] | @tsv'
+        | jq --raw-output --arg reviews ${reviewCount} '[.head.repo.name, 
+                                                         .state, 
+                                                         (if ($reviews | tonumber) > 0 then "has-reviews" else "no-reviews" end), 
+                                                         (if .comments > 0 or .review_comments > 0 then "has-comments" else "no-comments" end), 
+                                                         .html_url, 
+                                                         (.title | tojson) 
+                                                        ] | @tsv'
 }
 
 if ([[ -z "${TOKEN}" ]] || [[ -z "${EMAIL}" ]] || [[ -z "${GITHUB_USERNAME}" ]]); then 
