@@ -10,7 +10,6 @@ function list-all-pull-requests() {
     local fnam=$1
 
     local page=0
-    local response
     local incomplete
 
     local queryUrl="https://api.github.com/search/issues?q=state%3Aopen+author%3A${GITHUB_USERNAME}+type%3Apr"
@@ -34,10 +33,17 @@ function list-all-pull-requests() {
 
 function pull-request-details() {
     local queryUrl=$1
-    local response 
+
+    local reviewCount=$(curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}/reviews" | jq --raw-output 'length')
 
     curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}" \
-        | jq --raw-output '[.head.repo.name, .state, (if .comments > 0 or .review_comments > 0 then "comments" else "no-comments" end), .html_url, (.title | tojson)] | @tsv'
+        | jq --raw-output --arg reviews "${reviewCount}" '[.head.repo.name, 
+                                                           .state, 
+                                                           (if $reviews > 0 then "has-reviews" else "no-reviews" end), 
+                                                           (if .comments > 0 or .review_comments > 0 then "has-comments" else "no-comments" end), 
+                                                           .html_url, 
+                                                           (.title | tojson) 
+                                                          ] | @tsv'
 }
 
 if ([[ -z "${TOKEN}" ]] || [[ -z "${EMAIL}" ]] || [[ -z "${GITHUB_USERNAME}" ]]); then 
