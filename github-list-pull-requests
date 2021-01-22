@@ -46,6 +46,34 @@ function pull-request-details() {
                                                         ] | @tsv'
 }
 
+# Highlight output using sed regex
+# cat my-log.txt | highlight red ERROR | highlight yellow WARNING
+function highlight() {
+    if [[ $# -ne 2 ]] ; then
+        echo 'Usage: highlight COLOR PATTERN'
+        echo '  COLOR   The color to use (red, green, yellow, blue, magenta, cyan)'
+        echo '  PATTERN The sed regular expression to match'
+        return 1
+    fi
+
+    color=$1
+    pattern=$2
+
+    declare -A colors
+    colors[red]="\033[0;31m"
+    colors[green]="\033[0;32m"
+    colors[yellow]="\033[0;33m"
+    colors[blue]="\033[0;34m"
+    colors[magenta]="\033[0;35m"
+    colors[cyan]="\033[0;36m"
+    colors[default]="\033[0m"
+
+    colorOn=$(echo -e "${colors[$color]}")
+    colorOff=$(echo -e "${colors[default]}")
+
+    gsed -u s"/$pattern/$colorOn\0$colorOff/g"
+}
+
 if ([[ -z "${TOKEN}" ]] || [[ -z "${EMAIL}" ]] || [[ -z "${GITHUB_USERNAME}" ]]); then 
     echo 'Unable to find read token, email, and GitHub username'
     echo 'Check the output of:'
@@ -64,4 +92,7 @@ while IFS=, read -rA url
 do
     pull-request-details "${url}"
 done < <(cat "${tmpfile}" | jq --raw-output '.[].items[].pull_request.url') \
-    | column -t -s $'\t'
+    | column -t -s $'\t' \
+    | highlight red no-reviews \
+    | highlight green has-reviews \
+    | highlight red has-comments
