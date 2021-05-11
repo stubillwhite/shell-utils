@@ -1,0 +1,56 @@
+
+
+function __construct_url() {
+    local pathInRepo=$1
+    local branch=$2
+    local url=$3
+
+    if [[ $url =~ ^git@ ]]; then
+        local hostAlias=$(echo "$url" | sed -E "s|git@(.*):(.*).git|\1|")
+        local hostname=$(ssh -G "${hostAlias}" | awk '$1 == "hostname" { print $2 }')
+
+        echo "$url" \
+            | sed -E "s|git@(.*):(.*).git|https://${hostname}/\2/blob/${branch}/${pathInRepo}|"
+
+    elif [[ $url =~ ^https://bitbucket.org ]]; then
+
+        echo "$url" \
+            | sed -E "s|(.*).git|\1/src/${branch}/${pathInRepo}|"
+
+    elif [[ $url =~ ^https://github.com ]]; then
+        [[ -n "${pathInRepo}" ]] && pathInRepo="blob/${branch}/${pathInRepo}"
+
+        echo "$url" \
+            | sed -E "s|(.*).git|\1/${pathInRepo}|"
+
+    else
+        echo "Failed to open due to unrecognised url '$url'"
+    fi
+}
+
+function __git_url() {
+    local filename=$1
+
+    local pathInRepo 
+
+    # If opening a particular artifact then move to it to ensure we're querying the right Git repo
+    if [[ -n "${filename}" ]]; then
+        local containingDirectory
+
+        if [ -d "${filename}" ]; then 
+            containingDirectory="${filename}"
+        else 
+            containingDirectory=$(dirname "${filename}")
+        fi
+
+        pushd "${containingDirectory}" > /dev/null
+        pathInRepo=$(git ls-tree --full-name --name-only HEAD $(basename "${filename}"))
+    fi
+
+    __construct_url "${pathInRepo}" "${branch}" "${filename}"
+
+    [[ -n "${filename}" ]] && popd > /dev/null
+}
+
+__git_url $1
+#$OPEN_CMD "$(__git_url $1)"
