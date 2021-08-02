@@ -38,7 +38,6 @@ function pull-request-details() {
 
     curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}" \
         | jq --raw-output --arg reviews ${reviewCount} '[.head.repo.name, 
-                                                         .state, 
                                                          (if ($reviews | tonumber) > 0 then "has-reviews" else "no-reviews" end), 
                                                          (if .comments > 0 or .review_comments > 0 then "has-comments" else "no-comments" end), 
                                                          .html_url, 
