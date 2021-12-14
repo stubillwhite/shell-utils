@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# Usage:
+#    query-artifactory.sh FLAGS [ARTIFACT]
+#
+# Flags:
+#    -v     Display versions
+#    -d     Download ARTIFACT
+
+username=white1
+token=$( cat ~/.ivy2/.credentials | grep password | sed -r 's/password=(.*)/\1/g')
+
+url='https://rt.artifactory.tio.systems'
+
+function display-repository-contents() {
+    local action=$1
+    local repo=$2
+
+local response=$(curl -s \
+        -u "${username}:${token}" \
+        -X POST "${url}/artifactory/api/search/aql" \
+        -H "content-type: text/plain" \
+        -d@- <<EOF
+items.find(
+        {
+            "repo":{"\$eq":"${repo}"}
+        }
+    )
+EOF
+    )
+
+case "${action}" in
+        "verbose")
+            jq -r '.results[] | select(.name | contains(".pom")) | [.repo, .path, .name] | @tsv' <<< "${response}" \
+                | sort \
+                | uniq \
+                | awk '{ print $1 "/" $2 "/" $3; }'
+            ;;
+        "default")
+            echo "$repo"
+
+jq -r '.results[].name | select(contains(".pom"))' <<< "${response}" \
+                | awk '{ print " - " $1; }'
+
+echo
+            ;;
+    esac
+}
+
+function download-artefact() {
+    local path=$1
+
+wget \
+        --header "X-JFrog-Art-Api:${token}" \
+        "${url}/artifactory/${path}"
+}
+
+if [[ $1 == "-d" ]]; then
+    download-artefact "$2"
+elif [[ $1 == "-v" ]]; then
+    action="verbose"
+    display-repository-contents ${action} sbt-recs-libs-local
+    display-repository-contents ${action} sbt-recs-apps-local
+    display-repository-contents ${action} maven-recs-libs-local
+else
+    action="default"
+    display-repository-contents ${action} sbt-recs-libs-local
+    display-repository-contents ${action} sbt-recs-apps-local
+    display-repository-contents ${action} maven-recs-libs-local
+fi
