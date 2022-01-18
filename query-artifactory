@@ -8,7 +8,7 @@
 #    -d     Download ARTIFACT
 
 username=white1
-token=$( cat ~/.ivy2/.credentials | grep password | sed -r 's/password=(.*)/\1/g')
+token=$(cat ~/.ivy2/.credentials | grep password | sed -r 's/password=(.*)/\1/g')
 
 url='https://rt.artifactory.tio.systems'
 
@@ -36,13 +36,14 @@ case "${action}" in
                 | uniq \
                 | awk '{ print $1 "/" $2 "/" $3; }'
             ;;
+
         "default")
             echo "$repo"
 
-jq -r '.results[].name | select(contains(".pom"))' <<< "${response}" \
+            jq -r '.results[].name | select(contains(".pom"))' <<< "${response}" \
                 | awk '{ print " - " $1; }'
 
-echo
+            echo
             ;;
     esac
 }
