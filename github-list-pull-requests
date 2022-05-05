@@ -92,6 +92,8 @@ do
     pull-request-details "${url}"
 done < <(cat "${tmpfile}" | jq --raw-output '.[].items[].pull_request.url') \
     | column -t -s $'\t' \
+    | sort \
+    | uniq \
     | highlight red no-reviews \
     | highlight green has-reviews \
     | highlight red has-comments
