@@ -16,10 +16,11 @@ function display-repository-contents() {
     local action=$1
     local repo=$2
 
-local response=$(curl -s \
+    local response=$(curl -s \
         -u "${username}:${token}" \
-        -X POST "${url}/artifactory/api/search/aql" \
-        -H "content-type: text/plain" \
+        -H "X-JFrog-Art-Api: ${token}" \
+        -H "Content-Type: text/plain" \
+        -X POST "https://rt.artifactory.tio.systems/artifactory/api/search/aql" \
         -d@- <<EOF
 items.find(
         {
