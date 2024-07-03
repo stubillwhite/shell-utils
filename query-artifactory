@@ -53,6 +53,7 @@ function download-artefact() {
     local path=$1
 
 wget \
+        --no-check-certificate \
         --header "X-JFrog-Art-Api:${token}" \
         "${url}/artifactory/${path}"
 }
