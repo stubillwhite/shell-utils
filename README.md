@@ -15,7 +15,7 @@ A dumping ground for shell utilities and scripts that I use on a daily basis.
 - Create a `$SPARK_HOME/conf/spark-env.sh` in file with `SPARK_DIST_CLASSPATH` exported in it (adjusted for your path):
     - `vim spark-3.5.1-bin-without-hadoop/conf/spark-env.sh`
     - Insert the text below
-        - `export SPARK_DIST_CLASSPATH=$(~/Dev/tools/dist/hadoop-3.3.6/bin/hadoop classpath)`
+        - `export SPARK_DIST_CLASSPATH=$(~/dev/tools/dist/hadoop-3.3.6/bin/hadoop classpath)`
 
 - Save the attached scripts (`run-spark-shell` and `run-spark-shell.scala`) in a directory on your path and make run-spark-shell executable
 

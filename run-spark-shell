@@ -9,9 +9,9 @@
 #   wget https://archive.apache.org/dist/hadoop/core/hadoop-3.3.6/hadoop-3.3.6.tar.gz
 #
 # Create a $SPARK_HOME/conf/spark-env.sh in file with the following
-#   export SPARK_DIST_CLASSPATH=$(~/Dev/tools/dist/hadoop-3.3.6/bin/hadoop classpath)
+#   export SPARK_DIST_CLASSPATH=$(~/dev/tools/dist/hadoop-3.3.6/bin/hadoop classpath)
 
-export SPARK_HOME=~/Dev/tools/dist/spark-3.5.1-bin-without-hadoop/
+export SPARK_HOME=~/dev/tools/dist/spark-3.5.1-bin-without-hadoop/
 
 PWD=$(dirname $0)
 
