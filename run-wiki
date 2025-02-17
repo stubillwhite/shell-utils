@@ -1,7 +1,0 @@
-#!/bin/bash
-pushd ~/dev/my-stuff/personal-wiki || exit 1
-git pull -r
-sleep 2 && open 'http://localhost:4567' &
-./run-gollum.sh
-git push
-popd || exit 1

@@ -11,7 +11,7 @@
 # Create a $SPARK_HOME/conf/spark-env.sh in file with the following
 #   export SPARK_DIST_CLASSPATH=$(~/dev/tools/dist/hadoop-3.3.6/bin/hadoop classpath)
 
-export SPARK_HOME=~/dev/tools/dist/spark-3.5.1-bin-without-hadoop/
+export SPARK_HOME=~/dev/my-stuff/shell-utils/spark-shell/spark-3.5.1-bin-without-hadoop
 
 PWD=$(dirname $0)
 
