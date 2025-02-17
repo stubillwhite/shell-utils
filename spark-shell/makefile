@@ -38,7 +38,6 @@ help:
 .PHONY: clean
 clean: ## Remove all artefacts
 	@echo 'Cleaning application'
-	@rm -rf .make-sentinel.* $(SPARK_DIR) $(HADOOP_DIR) $(SPARK_ENV_FILE)
 
 .PHONY: clean-all
 clean-all: clean ## Remove all artefacts and dependencies
