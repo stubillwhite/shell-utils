@@ -4,6 +4,7 @@
 COLOR_BLUE=\033[0;34m
 COLOR_NONE=\033[0m
 
+# SPARK_ZIP_URL=https://archive.apache.org/dist/spark/spark-3.5.4/spark-3.5.4-bin-without-hadoop.tgz
 SPARK_ZIP_URL=https://archive.apache.org/dist/spark/spark-3.5.1/spark-3.5.1-bin-without-hadoop.tgz
 HADOOP_ZIP_URL=https://archive.apache.org/dist/hadoop/core/hadoop-3.3.6/hadoop-3.3.6.tar.gz
 
@@ -38,6 +39,9 @@ help:
 .PHONY: clean
 clean: ## Remove all artefacts
 	@echo 'Cleaning application'
+	@rm -rf \
+		$(SPARK_DIR) $(HADOOP_DIR) \
+		$(SENTINEL_FILE_SPARK) $(SENTINEL_FILE_HADOOP) $(SENTINEL_FILE_SPARK_ENV)
 
 .PHONY: clean-all
 clean-all: clean ## Remove all artefacts and dependencies
@@ -47,23 +51,30 @@ clean-all: clean ## Remove all artefacts and dependencies
 # Dependencies
 # ======================================
 
-$(SENTINEL_FILE_SPARK):
+$(SPARK_ZIP):
 	@echo 'Fetching Spark'
 	@wget $(SPARK_ZIP_URL)
-	@tar xzvf $(SPARK_ZIP)
+
+$(SENTINEL_FILE_SPARK): $(SPARK_ZIP)
+	@echo 'Extracting Spark'
+	@tar xzf $(SPARK_ZIP)
 	@touch $(SENTINEL_FILE_SPARK)
 
-$(SENTINEL_FILE_HADOOP):
+$(HADOOP_ZIP):
 	@echo 'Fetching Hadoop'
 	@wget $(HADOOP_ZIP_URL)
-	@tar xzvf $(HADOOP_ZIP)
+
+$(SENTINEL_FILE_HADOOP): $(HADOOP_ZIP)
+	@echo 'Extracting Hadoop'
+	@tar xzf $(HADOOP_ZIP)
 	@touch $(SENTINEL_FILE_HADOOP)
 
 $(SENTINEL_FILE_SPARK_ENV): $(SENTINEL_FILE_SPARK) $(SENTINEL_FILE_HADOOP)
+	@echo "Creating $(SPARK_ENV_FILE)"
 	@echo 'export SPARK_DIST_CLASSPATH=$$('$(abspath $(HADOOP_DIR))/bin/hadoop 'classpath)' > $(SPARK_ENV_FILE)
 	@touch $(SENTINEL_FILE_SPARK_ENV)
 
-spark: $(SENTINEL_FILE_SPARK_ENV)
+deps: $(SENTINEL_FILE_SPARK_ENV)
 
-deps: spark ## Install dependencies
+spark: deps ## Install Spark
 
