@@ -58,9 +58,8 @@ patched: unpatched
 	@docker desktop start
 	@echo
 	@echo "Patching fonts..."
-	# @docker run --rm -v ./$(UNPATCHED_DIR):/in:Z -v ./$(PATCHED_DIR):/out:Z -e "PN=1" nerdfonts/patcher
-	# @docker run --rm -v ./$(UNPATCHED_DIR):/in -v ./$(PATCHED_DIR):/out  -e "PN=1" nerdfonts/patcher -c --mono
-	@docker run --rm -v ./$(UNPATCHED_DIR):/in -v ./$(PATCHED_DIR):/out  -e "PN=1" nerdfonts/patcher -c
+	@docker run --rm -v ./$(UNPATCHED_DIR):/in -v ./$(PATCHED_DIR):/out  -e "PN=1" nerdfonts/patcher -c --mono
+	# @docker run --rm -v ./$(UNPATCHED_DIR):/in -v ./$(PATCHED_DIR):/out  -e "PN=1" nerdfonts/patcher -c
 	@echo
 	@echo "Stopping Docker..."
 	@docker desktop stop
