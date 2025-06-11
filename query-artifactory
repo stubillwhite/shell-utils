@@ -10,7 +10,8 @@
 username=white1
 token=$(cat ~/.ivy2/.credentials | grep password | sed -r 's/password=(.*)/\1/g')
 
-url='https://rt.artifactory.tio.systems'
+# url='https://rt.artifactory.tio.systems'
+url='https://bts.artifactory.tio.systems'
 
 function display-repository-contents() {
     local action=$1
@@ -20,7 +21,7 @@ function display-repository-contents() {
         -u "${username}:${token}" \
         -H "X-JFrog-Art-Api: ${token}" \
         -H "Content-Type: text/plain" \
-        -X POST "https://rt.artifactory.tio.systems/artifactory/api/search/aql" \
+        -X POST "${url}/artifactory/api/search/aql" \
         -d@- <<EOF
 items.find(
         {
