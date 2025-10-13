@@ -1,4 +1,4 @@
-#!/usr/local/bin/zsh
+#!/usr/bin/env zsh
 
 TOKEN="$(git config --get user.token)"
 EMAIL="$(git config --get user.email)"
