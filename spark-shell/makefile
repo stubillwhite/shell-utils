@@ -4,8 +4,11 @@
 COLOR_BLUE=\033[0;34m
 COLOR_NONE=\033[0m
 
-# SPARK_ZIP_URL=https://archive.apache.org/dist/spark/spark-3.5.4/spark-3.5.4-bin-without-hadoop.tgz
+#SPARK_ZIP_URL=https://archive.apache.org/dist/spark/spark-4.0.0/spark-4.0.0-bin-without-hadoop.tgz
+#SPARK_ZIP_URL=https://archive.apache.org/dist/spark/spark-3.5.4/spark-3.5.4-bin-without-hadoop.tgz
 SPARK_ZIP_URL=https://archive.apache.org/dist/spark/spark-3.5.1/spark-3.5.1-bin-without-hadoop.tgz
+
+#HADOOP_ZIP_URL=https://archive.apache.org/dist/hadoop/core/hadoop-3.4.1/hadoop-3.4.1.tar.gz
 HADOOP_ZIP_URL=https://archive.apache.org/dist/hadoop/core/hadoop-3.3.6/hadoop-3.3.6.tar.gz
 
 SPARK_ZIP=$(shell echo $(SPARK_ZIP_URL) | gsed 's|.*/\([^/]\+\)|\1|g')
