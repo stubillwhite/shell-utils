@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+python3 <<'PY'
+import os
+import subprocess
+from datetime import datetime
+
+data = subprocess.check_output(["git", "status", "--porcelain=v1", "-z"])
+entries = data.split(b"\0")
+
+rows = []
+i = 0
+while i < len(entries) - 1:
+    entry = entries[i].decode("utf-8", "replace")
+    xy = entry[:2]
+    path = entry[3:]
+
+    if xy[:1] in ("R", "C"):
+        i += 1
+        path = entries[i].decode("utf-8", "replace")
+
+    status = xy.replace(" ", "")
+
+    if os.path.exists(path):
+        epoch = os.path.getmtime(path)
+        ts = datetime.fromtimestamp(epoch).strftime("%d-%m-%Y %H:%M:%S")
+    else:
+        try:
+            epoch = int(subprocess.check_output(
+                ["git", "log", "-1", "--format=%ct", "--", path],
+                text=True
+            ).strip() or "0")
+            ts = subprocess.check_output(
+                ["git", "log", "-1", "--date=format:%d-%m-%Y %H:%M:%S", "--format=%cd", "--", path],
+                text=True
+            ).strip() or "DELETED"
+        except subprocess.CalledProcessError:
+            epoch = 0
+            ts = "DELETED"
+
+    rows.append((epoch, f"{ts} {status:<2} {path}"))
+
+    i += 1
+
+for _, line in sorted(rows, reverse=True):
+    print(line)
+PY

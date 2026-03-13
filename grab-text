@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+screencapture -i ~/trash/tmp.png \
+    && image-to-text ~/trash/tmp.png 2>/dev/null
