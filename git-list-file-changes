@@ -5,43 +5,87 @@ import os
 import subprocess
 from datetime import datetime
 
-data = subprocess.check_output(["git", "status", "--porcelain=v1", "-z"])
-entries = data.split(b"\0")
+BAR_WIDTH = 10
+
+def git(cmd):
+    return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+
+def bar(p):
+    filled = int((p / 100) * BAR_WIDTH)
+    return "█" * filled + "░" * (BAR_WIDTH - filled)
+
+# Collect diff statistics once
+diff_map = {}
+for line in git(["git", "diff", "--numstat", "HEAD"]).splitlines():
+    added, deleted, path = line.split("\t")
+
+    if added == "-" or deleted == "-":
+        diff_map[path] = None
+    else:
+        diff_map[path] = (int(added), int(deleted))
 
 rows = []
+
+status_data = subprocess.check_output(
+    ["git", "status", "--porcelain=v1", "-z"]
+).split(b"\0")
+
 i = 0
-while i < len(entries) - 1:
-    entry = entries[i].decode("utf-8", "replace")
+while i < len(status_data) - 1:
+
+    entry = status_data[i].decode("utf-8", "replace")
     xy = entry[:2]
     path = entry[3:]
 
     if xy[:1] in ("R", "C"):
         i += 1
-        path = entries[i].decode("utf-8", "replace")
+        path = status_data[i].decode("utf-8", "replace")
 
     status = xy.replace(" ", "")
 
+    # timestamp
     if os.path.exists(path):
         epoch = os.path.getmtime(path)
         ts = datetime.fromtimestamp(epoch).strftime("%d-%m-%Y %H:%M:%S")
     else:
         try:
-            epoch = int(subprocess.check_output(
-                ["git", "log", "-1", "--format=%ct", "--", path],
-                text=True
-            ).strip() or "0")
-            ts = subprocess.check_output(
-                ["git", "log", "-1", "--date=format:%d-%m-%Y %H:%M:%S", "--format=%cd", "--", path],
-                text=True
-            ).strip() or "DELETED"
+            epoch = int(git(["git","log","-1","--format=%ct","--",path]).strip() or "0")
+            ts = git([
+                "git","log","-1",
+                "--date=format:%d-%m-%Y %H:%M:%S",
+                "--format=%cd","--",path
+            ]).strip() or "DELETED"
         except subprocess.CalledProcessError:
             epoch = 0
             ts = "DELETED"
 
-    rows.append((epoch, f"{ts} {status:<2} {path}"))
+    stats = diff_map.get(path)
+
+    if stats is None:
+        pct = 100
+    elif stats is None:
+        pct = 0
+    else:
+        added, deleted = stats
+
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                total = sum(1 for _ in f)
+        else:
+            total = 0
+
+        denom = total + added if total else 1
+        pct = round((added + deleted) / denom * 100)
+
+    pct = max(0, min(100, pct))
+    pct_str = f"{pct}%"
+    progress = bar(pct)
+
+    rows.append((epoch, f"{ts} {status:<2} {pct_str:>4} {progress} {path}"))
 
     i += 1
 
 for _, line in sorted(rows, reverse=True):
     print(line)
+
 PY
