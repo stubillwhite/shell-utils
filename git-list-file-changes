@@ -2,13 +2,24 @@
 
 python3 <<'PY'
 import os
+import sys
 import subprocess
 from datetime import datetime
 
 BAR_WIDTH = 10
 
+try:
+    REPO_ROOT = subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"],
+        text=True,
+        stderr=subprocess.DEVNULL,
+    ).strip()
+except subprocess.CalledProcessError:
+    print("git-list-file-changes: not inside a git repository", file=sys.stderr)
+    raise SystemExit(1)
+
 def git(cmd):
-    return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+    return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, cwd=REPO_ROOT)
 
 def bar(p):
     filled = int((p / 100) * BAR_WIDTH)
@@ -27,7 +38,8 @@ for line in git(["git", "diff", "--numstat", "HEAD"]).splitlines():
 rows = []
 
 status_data = subprocess.check_output(
-    ["git", "status", "--porcelain=v1", "-z"]
+    ["git", "status", "--porcelain=v1", "-z"],
+    cwd=REPO_ROOT,
 ).split(b"\0")
 
 i = 0
@@ -42,10 +54,11 @@ while i < len(status_data) - 1:
         path = status_data[i].decode("utf-8", "replace")
 
     status = xy.replace(" ", "")
+    abs_path = os.path.join(REPO_ROOT, path)
 
     # timestamp
-    if os.path.exists(path):
-        epoch = os.path.getmtime(path)
+    if os.path.exists(abs_path):
+        epoch = os.path.getmtime(abs_path)
         ts = datetime.fromtimestamp(epoch).strftime("%d-%m-%Y %H:%M:%S")
     else:
         try:
@@ -59,17 +72,18 @@ while i < len(status_data) - 1:
             epoch = 0
             ts = "DELETED"
 
+    has_stats = path in diff_map
     stats = diff_map.get(path)
 
-    if stats is None:
-        pct = 100
+    if not has_stats:
+        pct = 100 if any(flag in status for flag in ("A", "?", "D", "R", "C")) else 0
     elif stats is None:
-        pct = 0
+        pct = 100
     else:
         added, deleted = stats
 
-        if os.path.isfile(path):
-            with open(path, "rb") as f:
+        if os.path.isfile(abs_path):
+            with open(abs_path, "rb") as f:
                 total = sum(1 for _ in f)
         else:
             total = 0
