@@ -1,151 +1,135 @@
 #!/usr/bin/env bats
 
-function __construct-url() {
-    local pathInRepo=$1
-    local branch=$2
-    local url=$3
+setup() {
+    export PROJECT_ROOT
+    PROJECT_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 
-    if [[ $url =~ ^git@ ]]; then
-        local hostAlias=$(echo "$url" | sed -E "s|git@(.*):(.*).git|\1|")
-        local hostname=$(ssh -G "${hostAlias}" | awk '$1 == "hostname" { print $2 }')
+    export SCRIPT="${PROJECT_ROOT}/git-open-two"
+    export TEST_ROOT="${BATS_TEST_TMPDIR}/workspace"
 
-        echo "$url" \
-            | sed -E "s|git@(.*):(.*).git|https://${hostname}/\2/blob/${branch}/${pathInRepo}|"
+    mkdir -p "${TEST_ROOT}/bin"
 
-    elif [[ $url =~ ^https://bitbucket.org ]]; then
+    cat > "${TEST_ROOT}/bin/ssh" <<'EOF'
+#!/usr/bin/env bash
 
-        echo "$url" \
-            | sed -E "s|(.*).git|\1/src/${branch}/${pathInRepo}|"
+if [[ "$1" == "-G" ]]; then
+    case "$2" in
+        github-personal)
+            printf 'hostname github.com\n'
+            ;;
+        *)
+            printf 'hostname %s\n' "$2"
+            ;;
+    esac
+fi
+EOF
 
-    elif [[ $url =~ ^https://github.com ]]; then
-        [[ -n "${pathInRepo}" ]] && pathInRepo="blob/${branch}/${pathInRepo}"
+    cat > "${TEST_ROOT}/bin/open" <<'EOF'
+#!/usr/bin/env bash
 
-        echo "$url" \
-            | sed -E "s|(.*).git|\1/${pathInRepo}|"
+printf '%s\n' "$1" >> "${TEST_ROOT}/open.log"
+printf '%s\n' "$1"
+EOF
 
-    else
-        echo "Failed to open due to unrecognised url '$url'"
-    fi
+    chmod +x "${TEST_ROOT}/bin/ssh"
+    chmod +x "${TEST_ROOT}/bin/open"
+    export PATH="${TEST_ROOT}/bin:${PATH}"
 }
 
-function __git-url() {
-    local filename=$1
-
-    local pathInRepo 
-
-    # If opening a particular artifact then move to it to ensure we're querying the right Git repo
-    if [[ -n "${filename}" ]]; then
-        local containingDirectory
-
-        if [ -d "${filename}" ]; then 
-            containingDirectory="${filename}"
-        else 
-            containingDirectory=$(dirname "${filename}")
-        fi
-
-        pushd "${containingDirectory}" > /dev/null
-        pathInRepo=$(git ls-tree --full-name --name-only HEAD $(basename "${filename}"))
-    fi
-
-    __construct-url "${pathInRepo}" "${branch}" "${url}"
-
-    [[ -n "${filename}" ]] && popd > /dev/null
-}
-
-function create-repo-with-url() {
+create-repo-with-url() {
     local url=$1
+    local repo="${TEST_ROOT}/my-repo"
 
-    rm -rf my-repo
-    mkdir -p my-repo/subdir
-    pushd my-repo
-    git init
+    mkdir -p "${repo}/subdir"
+
+    pushd "${repo}" > /dev/null || return 1
+    git init > /dev/null
+    git config user.name "Test User"
+    git config user.email "test@example.com"
     git remote add origin "${url}"
-    touch file-one.md
-    touch subdir/file-two.md
+    touch file-one.md subdir/file-two.md
     git add .
-    git commit -am 'Initial commit'
-    git checkout -b my-branch 2>&1
-    popd
+    git commit -m 'Initial commit' > /dev/null
+    git branch -M main > /dev/null
+    popd > /dev/null || return 1
 }
 
-function checkout-branch() {
+checkout-branch() {
     local branch=$1
-    pushd my-repo
-    git checkout "${branch}" 2>&1
-    popd
+
+    git -C "${TEST_ROOT}/my-repo" checkout -b "${branch}" > /dev/null
 }
 
-function teardown() {
-    rm -rf my-repo
-}
-
-function run-test() {
+run-test() {
     local url=$1
     local branch=$2
-    local file=$3
+    local target=$3
     local expected=$4
 
-    create-repo-with-url "${url}" > /dev/null
-    checkout-branch "${branch}" > /dev/null
-    run __git-url "${file}"
-    echo "Expected: ${expected}"
-    echo "Actual:   ${lines}"
-    [ "${lines[0]}" = "${expected}" ]
+    create-repo-with-url "${url}"
+
+    if [[ "${branch}" != "main" ]]; then
+        checkout-branch "${branch}"
+    fi
+
+    run bash "${SCRIPT}" "${TEST_ROOT}/my-repo/${target}"
+    [ "$status" -eq 0 ]
+    [ "$output" = "${expected}" ]
 }
 
-@test 'git ssh file within directory on main' {
+@test 'github ssh file within repository root on main' {
     run-test 'git@github-personal:my-username/my-repo.git' \
-             'main'  \
-             'my-repo/file-one.md' \
+             'main' \
+             'file-one.md' \
              'https://github.com/my-username/my-repo/blob/main/file-one.md'
 }
 
-@test 'git ssh file within sub-directory on main' {
+@test 'github ssh file within sub-directory on branch' {
     run-test 'git@github-personal:my-username/my-repo.git' \
-             'main'  \
-             'my-repo/subdir/file-two.md' \
-             'https://github.com/my-username/my-repo/blob/main/subdir/file-two.md'
-}
-
-@test 'git ssh root directory on main' {
-    run-test 'git@github-personal:my-username/my-repo.git' \
-             'main'  \
-             'my-repo' \
-             'https://github.com/my-username/my-repo/'
-}
-
-@test 'git ssh file within directory on branch' {
-    run-test 'git@github-personal:my-username/my-repo.git' \
-             'my-branch'  \
-             'my-repo/file-one.md' \
-             'https://github.com/my-username/my-repo/blob/my-branch/file-one.md'
-}
-
-@test 'git ssh file within sub-directory on branch' {
-    run-test 'git@github-personal:my-username/my-repo.git' \
-             'my-branch'  \
-             'my-repo/subdir/file-two.md' \
+             'my-branch' \
+             'subdir/file-two.md' \
              'https://github.com/my-username/my-repo/blob/my-branch/subdir/file-two.md'
 }
 
-@test 'git ssh root directory on branch' {
+@test 'github ssh directory uses tree URLs' {
     run-test 'git@github-personal:my-username/my-repo.git' \
-             'my-branch'  \
-             'my-repo' \
-             'https://github.com/my-username/my-repo/blob/my-branch'
+             'my-branch' \
+             'subdir' \
+             'https://github.com/my-username/my-repo/tree/my-branch/subdir'
+}
+
+@test 'github ssh repository root uses tree URL' {
+    run-test 'git@github-personal:my-username/my-repo.git' \
+             'main' \
+             '.' \
+             'https://github.com/my-username/my-repo/tree/main'
 }
 
 @test 'bitbucket file within sub-directory on branch' {
-    run-test 'https://bitbucket.org/my-repo.git' \
-             'my-branch'  \
-             'my-repo/subdir/file-two.md' \
-             'https://bitbucket.org/my-repo/src/my-branch/subdir/file-two.md'
+    run-test 'https://bitbucket.org/my-team/my-repo.git' \
+             'my-branch' \
+             'subdir/file-two.md' \
+             'https://bitbucket.org/my-team/my-repo/src/my-branch/subdir/file-two.md'
 }
 
-@test 'github file within sub-directory on branch' {
-    run-test 'https://github.com/my-repo.git' \
-             'my-branch'  \
-             'my-repo/subdir/file-two.md' \
-             'https://github.com/my-repo/blob/my-branch/subdir/file-two.md'
+@test 'github https repository root uses current branch when no path is provided' {
+    create-repo-with-url 'https://github.com/my-org/my-repo.git'
+    checkout-branch 'my-branch'
+
+    pushd "${TEST_ROOT}/my-repo" > /dev/null || false
+    run bash "${SCRIPT}"
+    popd > /dev/null || false
+
+    [ "$status" -eq 0 ]
+    [ "$output" = 'https://github.com/my-org/my-repo/tree/my-branch' ]
 }
 
+@test 'opens resolved url with open by default' {
+    create-repo-with-url 'https://github.com/my-org/my-repo.git'
+
+    run bash "${SCRIPT}" "${TEST_ROOT}/my-repo/file-one.md"
+
+    [ "$status" -eq 0 ]
+    [ "$output" = 'https://github.com/my-org/my-repo/blob/main/file-one.md' ]
+    [ "$(cat "${TEST_ROOT}/open.log")" = 'https://github.com/my-org/my-repo/blob/main/file-one.md' ]
+}

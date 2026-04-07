@@ -1,56 +1,135 @@
+#!/usr/bin/env bash
 
+function fail() {
+    echo "$1" >&2
+    return 1
+}
+
+function __resolve_remote_host() {
+    local host=$1
+    local resolved_host
+
+    resolved_host=$(ssh -G "${host}" 2>/dev/null | awk '$1 == "hostname" { print $2; exit }')
+    echo "${resolved_host:-${host}}"
+}
+
+function __remote_base_url() {
+    local remote_url=$1
+
+    if [[ "${remote_url}" =~ ^git@([^:]+):(.+)$ ]]; then
+        local host_alias=${BASH_REMATCH[1]}
+        local repo_path=${BASH_REMATCH[2]%.git}
+        local hostname
+
+        hostname=$(__resolve_remote_host "${host_alias}")
+        echo "https://${hostname}/${repo_path}"
+    elif [[ "${remote_url}" =~ ^ssh://git@([^/]+)/(.+)$ ]]; then
+        local host_alias=${BASH_REMATCH[1]}
+        local repo_path=${BASH_REMATCH[2]%.git}
+        local hostname
+
+        hostname=$(__resolve_remote_host "${host_alias}")
+        echo "https://${hostname}/${repo_path}"
+    elif [[ "${remote_url}" =~ ^https?:// ]]; then
+        echo "${remote_url%.git}"
+    else
+        fail "Failed to open due to unrecognised url '${remote_url}'" || return 1
+    fi
+}
+
+function __target_details() {
+    local target=${1:-.}
+    local probe_dir
+    local target_type
+    local target_abs
+
+    if [[ -d "${target}" ]]; then
+        probe_dir=${target}
+        target_type=tree
+        target_abs=$(cd "${target}" && pwd -P)
+    elif [[ -e "${target}" ]]; then
+        probe_dir=$(dirname "${target}")
+        target_type=blob
+        target_abs="$(cd "${probe_dir}" && pwd -P)/$(basename "${target}")"
+    else
+        fail "Path not found: ${target}" || return 1
+    fi
+
+    local repo_root
+    repo_root=$(git -C "${probe_dir}" rev-parse --show-toplevel 2>/dev/null) \
+        || fail "Not inside a git repository: ${target}" || return 1
+
+    repo_root=$(cd "${repo_root}" && pwd -P)
+
+    local path_in_repo
+    if [[ "${target_abs}" == "${repo_root}" ]]; then
+        path_in_repo=
+    elif [[ "${target_abs}" == "${repo_root}/"* ]]; then
+        path_in_repo=${target_abs#"${repo_root}/"}
+    else
+        fail "Path '${target}' is outside repository '${repo_root}'" || return 1
+    fi
+
+    if [[ "${target_type}" == "blob" ]]; then
+        git -C "${repo_root}" cat-file -e "HEAD:${path_in_repo}" 2>/dev/null \
+            || fail "Tracked file not found at HEAD: ${path_in_repo}" || return 1
+    elif [[ -n "${path_in_repo}" ]]; then
+        git -C "${repo_root}" ls-tree -d --name-only HEAD -- "${path_in_repo}" | grep -q . \
+            || fail "Tracked directory not found at HEAD: ${path_in_repo}" || return 1
+    fi
+
+    printf '%s\t%s\t%s\n' "${repo_root}" "${target_type}" "${path_in_repo}"
+}
 
 function __construct_url() {
-    local pathInRepo=$1
+    local base_url=$1
     local branch=$2
-    local url=$3
+    local target_type=$3
+    local path_in_repo=$4
 
-    if [[ $url =~ ^git@ ]]; then
-        local hostAlias=$(echo "$url" | sed -E "s|git@(.*):(.*).git|\1|")
-        local hostname=$(ssh -G "${hostAlias}" | awk '$1 == "hostname" { print $2 }')
-
-        echo "$url" \
-            | sed -E "s|git@(.*):(.*).git|https://${hostname}/\2/blob/${branch}/${pathInRepo}|"
-
-    elif [[ $url =~ ^https://bitbucket.org ]]; then
-
-        echo "$url" \
-            | sed -E "s|(.*).git|\1/src/${branch}/${pathInRepo}|"
-
-    elif [[ $url =~ ^https://github.com ]]; then
-        [[ -n "${pathInRepo}" ]] && pathInRepo="blob/${branch}/${pathInRepo}"
-
-        echo "$url" \
-            | sed -E "s|(.*).git|\1/${pathInRepo}|"
-
+    if [[ "${base_url}" =~ bitbucket ]]; then
+        echo "${base_url}/src/${branch}${path_in_repo:+/${path_in_repo}}"
     else
-        echo "Failed to open due to unrecognised url '$url'"
+        echo "${base_url}/${target_type}/${branch}${path_in_repo:+/${path_in_repo}}"
     fi
 }
 
 function __git_url() {
-    local filename=$1
+    local target=${1:-.}
+    local details
 
-    local pathInRepo 
+    details=$(__target_details "${target}") || return 1
 
-    # If opening a particular artifact then move to it to ensure we're querying the right Git repo
-    if [[ -n "${filename}" ]]; then
-        local containingDirectory
+    local repo_root
+    local target_type
+    local path_in_repo
 
-        if [ -d "${filename}" ]; then 
-            containingDirectory="${filename}"
-        else 
-            containingDirectory=$(dirname "${filename}")
-        fi
+    IFS=$'\t' read -r repo_root target_type path_in_repo <<< "${details}"
 
-        pushd "${containingDirectory}" > /dev/null
-        pathInRepo=$(git ls-tree --full-name --name-only HEAD $(basename "${filename}"))
-    fi
+    local branch
+    branch=$(git -C "${repo_root}" symbolic-ref --quiet --short HEAD 2>/dev/null) \
+        || branch=$(git -C "${repo_root}" rev-parse --short HEAD 2>/dev/null) \
+        || return 1
 
-    __construct_url "${pathInRepo}" "${branch}" "${filename}"
+    local remote_url
+    remote_url=$(git -C "${repo_root}" remote get-url origin 2>/dev/null) \
+        || fail "Git remote 'origin' not found for repository '${repo_root}'" || return 1
 
-    [[ -n "${filename}" ]] && popd > /dev/null
+    local base_url
+    base_url=$(__remote_base_url "${remote_url}") || return 1
+
+    __construct_url "${base_url}" "${branch}" "${target_type}" "${path_in_repo}"
 }
 
-__git_url $1
-#$OPEN_CMD "$(__git_url $1)"
+function main() {
+    local url
+    local open_cmd
+
+    url=$(__git_url "${1:-.}") || return 1
+    open_cmd=${OPEN_CMD:-open}
+    "${open_cmd}" "${url}"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
