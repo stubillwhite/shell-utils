@@ -4,7 +4,7 @@ setup() {
     export PROJECT_ROOT
     PROJECT_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 
-    export SCRIPT="${PROJECT_ROOT}/git-open-two"
+    export SCRIPT="${PROJECT_ROOT}/git-open"
     export TEST_ROOT="${BATS_TEST_TMPDIR}/workspace"
 
     mkdir -p "${TEST_ROOT}/bin"
