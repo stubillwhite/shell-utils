@@ -22,7 +22,8 @@ HADOOP_VERSION=3.3.6
 AWS_VERSION=1.12.751
 
 PACKAGES=
-PACKAGES+=com.amazonaws:aws-java-sdk:$AWS_VERSION
+# PACKAGES+=com.amazonaws:aws-java-sdk:$AWS_VERSION
+PACKAGES+=com.amazonaws:aws-java-sdk-s3:$AWS_VERSION
 PACKAGES+=,org.apache.hadoop:hadoop-aws:$HADOOP_VERSION
 PACKAGES+=,org.apache.hadoop:hadoop-common:$HADOOP_VERSION
 
