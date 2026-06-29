@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 
-TOKEN="$(git config --get user.token)"
+TOKEN="${SECRET_GITHUB_TOKEN}"
 EMAIL="$(git config --get user.email)"
 
 [[ "${EMAIL}" == "s.white.1@elsevier.com" ]] && GITHUB_USERNAME="stuw-els"
