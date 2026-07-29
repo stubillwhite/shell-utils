@@ -1,48 +1,168 @@
 #!/usr/bin/env zsh
 
+setopt pipefail
+
 TOKEN="${SECRET_GITHUB_TOKEN}"
 EMAIL="$(git config --get user.email)"
 
 [[ "${EMAIL}" == "s.white.1@elsevier.com" ]] && GITHUB_USERNAME="stuw-els"
 [[ "${EMAIL}" == "stubillwhite@gmail.com" ]] && GITHUB_USERNAME="stubillwhite"
 
-function list-all-pull-requests() {
-    local fnam=$1
+function fail() {
+    echo "$1" >&2
+    return 1
+}
 
+function usage() {
+    echo 'Usage: github-list-pull-requests <mine|repo>' >&2
+    return 1
+}
+
+function require-api-access() {
+    if [[ -z "${TOKEN}" || -z "${EMAIL}" ]]; then
+        echo 'Unable to find read token and email' >&2
+        echo 'Check the output of:' >&2
+        echo '  echo $SECRET_GITHUB_TOKEN' >&2
+        echo '  git config --get user.email' >&2
+        return 1
+    fi
+}
+
+function require-user-config() {
+    require-api-access || return 1
+
+    if [[ -z "${GITHUB_USERNAME}" ]]; then
+        echo 'Unable to map git user.email to a GitHub username' >&2
+        echo 'Check the output of:' >&2
+        echo '  git config --get user.email' >&2
+        return 1
+    fi
+}
+
+function resolve-remote-host() {
+    local host=$1
+    local resolvedHost
+
+    resolvedHost=$(ssh -G "${host}" 2>/dev/null | awk '$1 == "hostname" { print $2; exit }')
+    echo "${resolvedHost:-${host}}"
+}
+
+function current-repository-slug() {
+    local repoRoot
+    local remoteUrl
+    local hostAlias
+    local hostName
+    local repoPath
+
+    repoRoot=$(git rev-parse --show-toplevel 2>/dev/null) \
+        || fail 'github-list-pull-requests: not inside a git repository' || return 1
+
+    remoteUrl=$(git -C "${repoRoot}" remote get-url origin 2>/dev/null) \
+        || fail "github-list-pull-requests: Git remote 'origin' not found" || return 1
+
+    if [[ "${remoteUrl}" == git@*:* ]]; then
+        hostAlias="${remoteUrl#git@}"
+        hostAlias="${hostAlias%%:*}"
+        repoPath="${remoteUrl#*:}"
+        hostName=$(resolve-remote-host "${hostAlias}")
+    elif [[ "${remoteUrl}" == ssh://git@*/* ]]; then
+        local withoutPrefix="${remoteUrl#ssh://git@}"
+        hostAlias="${withoutPrefix%%/*}"
+        repoPath="${withoutPrefix#*/}"
+        hostName=$(resolve-remote-host "${hostAlias}")
+    elif [[ "${remoteUrl}" == https://github.com/* || "${remoteUrl}" == http://github.com/* ]]; then
+        repoPath="${remoteUrl#https://github.com/}"
+        repoPath="${repoPath#http://github.com/}"
+        hostName='github.com'
+    elif [[ "${remoteUrl}" == https://* || "${remoteUrl}" == http://* ]]; then
+        fail "github-list-pull-requests: Git remote is not a GitHub repository: ${remoteUrl}" || return 1
+    else
+        fail "github-list-pull-requests: Failed to parse Git remote URL: ${remoteUrl}" || return 1
+    fi
+
+    [[ "${hostName}" == "github.com" ]] \
+        || fail "github-list-pull-requests: Git remote is not a GitHub repository: ${remoteUrl}" || return 1
+
+    echo "${repoPath%.git}"
+}
+
+function pull-request-urls() {
+    local queryUrl=$1
+    local pageUrl
     local page=0
+    local response
     local incomplete
 
-    local queryUrl="https://api.github.com/search/issues?q=state%3Aopen+author%3A${GITHUB_USERNAME}+type%3Apr"
-
-    local tmpfile=$(mktemp)
-
-    echo > "${fnam}"
-    echo '[' >> "${fnam}"
     while : ;
     do
-      curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}?per_page=100\&page=${page}" > "${tmpfile}"
-      cat "${tmpfile}" >> "${fnam}"
+        pageUrl="${queryUrl}&per_page=100&page=${page}"
 
-      incomplete=$(cat "${tmpfile}" | jq '.incomplete_results')
-      [[ "${incomplete}" == "false" ]] && break
-      echo "," >> "${fnam}"
-      page=$((page + 1))
+        response=$(curl --silent -u "${EMAIL}:${TOKEN}" "${pageUrl}") \
+            || return 1
+
+        echo "${response}" | jq --raw-output '.items[].pull_request.url' || return 1
+
+        incomplete=$(echo "${response}" | jq '.incomplete_results') || return 1
+
+        [[ "${incomplete}" == "false" ]] && break
+
+        page=$((page + 1))
     done
-    echo ']' >> "${fnam}"
 }
 
 function pull-request-details() {
     local queryUrl=$1
+    local reviewCount
 
-    local reviewCount=$(curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}/reviews" | jq --raw-output 'length')
+    reviewCount=$(curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}/reviews" | jq --raw-output 'length') \
+        || return 1
 
     curl --silent -u "${EMAIL}:${TOKEN}" "${queryUrl}" \
-        | jq --raw-output --arg reviews ${reviewCount} '[.head.repo.name, 
-                                                         (if ($reviews | tonumber) > 0 then "has-reviews" else "no-reviews" end), 
-                                                         (if .comments > 0 or .review_comments > 0 then "has-comments" else "no-comments" end), 
-                                                         .html_url, 
-                                                         (.title | tojson) 
+        | jq --raw-output --arg reviews ${reviewCount} '[.head.repo.name,
+                                                         (if ($reviews | tonumber) > 0 then "has-reviews" else "no-reviews" end),
+                                                         (if .comments > 0 or .review_comments > 0 then "has-comments" else "no-comments" end),
+                                                         .html_url,
+                                                         (.title | tojson)
                                                         ] | @tsv'
+}
+
+function pull-request-search-url-for-user() {
+    echo "https://api.github.com/search/issues?q=state%3Aopen+author%3A${GITHUB_USERNAME}+type%3Apr"
+}
+
+function pull-request-search-url-for-repository() {
+    local repositorySlug=$1
+    local encodedRepositorySlug="${repositorySlug//\//%2F}"
+
+    echo "https://api.github.com/search/issues?q=state%3Aopen+repo%3A${encodedRepositorySlug}+type%3Apr"
+}
+
+function print-pull-requests() {
+    local label=$1
+    local queryUrl=$2
+    local pullRequestUrls
+
+    echo "Pull requests for ${label}:"
+
+    pullRequestUrls=$(pull-request-urls "${queryUrl}") || return 1
+
+    if [[ -z "${pullRequestUrls}" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r url
+    do
+        pull-request-details "${url}" || return 1
+    done <<< "${pullRequestUrls}" \
+        | column -t -s $'\t' \
+        | sort \
+        | uniq \
+        | highlight red no-reviews \
+        | highlight green has-reviews \
+        | highlight red has-comments
+
+    local pipelineStatus=$?
+    return ${pipelineStatus}
 }
 
 # Highlight output using sed regex
@@ -55,10 +175,12 @@ function highlight() {
         return 1
     fi
 
-    color=$1
-    pattern=$2
+    local color=$1
+    local pattern=$2
+    local -A colors
+    local colorOn
+    local colorOff
 
-    declare -A colors
     colors[red]="\033[0;31m"
     colors[green]="\033[0;32m"
     colors[yellow]="\033[0;33m"
@@ -73,27 +195,25 @@ function highlight() {
     gsed -u s"/$pattern/$colorOn\0$colorOff/g"
 }
 
-if ([[ -z "${TOKEN}" ]] || [[ -z "${EMAIL}" ]] || [[ -z "${GITHUB_USERNAME}" ]]); then 
-    echo 'Unable to find read token, email, and GitHub username'
-    echo 'Check the output of:'
-    echo '  git config --get user.token'
-    echo '  git config --get user.email'
-    return 1
-fi
+function main() {
+    local command=$1
+    local repositorySlug
 
-echo "Pull requests for ${GITHUB_USERNAME}:"
+    case "${command}" in
+        mine)
+            require-user-config || return 1
+            print-pull-requests "${GITHUB_USERNAME}" "$(pull-request-search-url-for-user)"
+            ;;
+        repo)
+            require-api-access || return 1
+            repositorySlug=$(current-repository-slug) || return 1
+            print-pull-requests "${repositorySlug}" "$(pull-request-search-url-for-repository "${repositorySlug}")"
+            ;;
+        *)
+            usage
+            ;;
+    esac
+}
 
-tmpfile=$(mktemp)
-
-list-all-pull-requests "${tmpfile}"
-
-while IFS=, read -rA url
-do
-    pull-request-details "${url}"
-done < <(cat "${tmpfile}" | jq --raw-output '.[].items[].pull_request.url') \
-    | column -t -s $'\t' \
-    | sort \
-    | uniq \
-    | highlight red no-reviews \
-    | highlight green has-reviews \
-    | highlight red has-comments
+main "$@"
+exit $?
