@@ -38,3 +38,4 @@ test: ## Run all tests
 	@for test_file in $(TEST_FILES); do \
 		bats "$$test_file" || exit $$?; \
 	done
+	@python3 -m unittest discover -s $(TEST_DIR) -p '*_test.py'
