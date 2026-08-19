@@ -3,7 +3,7 @@ import sys
 
 import cc_data_sets
 
-BUCKET = "s3://sccontent-prod-corecomplete-xocs/prod/xocs"
+BUCKET = "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs"
 
 DATASETS = {
     "ANI": f"{BUCKET}/ANI/Core/output/three_column/",
