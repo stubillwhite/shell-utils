@@ -20,8 +20,8 @@ PARSED = {
 }
 
 GROUPS = [
-    ("Two column XOCS enriched Parquet", ENRICHED),
-    ("Parsed Parquet", PARSED),
+    ("MHub/XFAB: Two column XOCS enriched Parquet", ENRICHED),
+    ("MHub/XFAB: Parsed Parquet", PARSED),
 ]
 
 

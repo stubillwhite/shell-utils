@@ -23,11 +23,12 @@ LABELS = {name: dataset_label(name) for name in DATASETS}
 
 
 def main():
+    title = "RDP: Two column non-enriched Parquet"
     limit = cc_data_sets.date_limit(sys.argv[1:])
     prefixes_by_dataset = {
         name: cc_data_sets.list_prefixes(path) for name, path in DATASETS.items()
     }
-    print(cc_data_sets.render(prefixes_by_dataset, LABELS, DATASETS, limit=limit))
+    print(cc_data_sets.render(prefixes_by_dataset, LABELS, DATASETS, title=title, limit=limit))
 
 
 if __name__ == "__main__":
