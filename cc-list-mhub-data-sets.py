@@ -8,6 +8,7 @@ DATE_PATTERN = re.compile(r"^\d{8}$")
 
 ENRICHED = {
     "ANI": "s3://sccontent-ani-parquet-prod/",
+    "ANI dummy": "s3://sccontent-anidummy-parquet-prod/",
     "APR": "s3://sccontent-apr-parquet-prod/",
     "IPR": "s3://sccontent-ipr-parquet-prod/",
     "IH": "s3://sccontent-ih-parquet-prod/",

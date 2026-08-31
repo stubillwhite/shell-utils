@@ -14,6 +14,7 @@ class ConfigTest(unittest.TestCase):
             mod.ENRICHED,
             {
                 "ANI": "s3://sccontent-ani-parquet-prod/",
+                "ANI dummy": "s3://sccontent-anidummy-parquet-prod/",
                 "APR": "s3://sccontent-apr-parquet-prod/",
                 "IPR": "s3://sccontent-ipr-parquet-prod/",
                 "IH": "s3://sccontent-ih-parquet-prod/",
@@ -33,7 +34,7 @@ class ConfigTest(unittest.TestCase):
     def test_reports_both_groups_in_order(self):
         self.assertEqual(
             [title for title, _ in mod.GROUPS],
-            ["Two column XOCS enriched Parquet", "Parsed Parquet"],
+            ["MHub/XFAB: Two column XOCS enriched Parquet", "MHub/XFAB: Parsed Parquet"],
         )
 
 
