@@ -8,19 +8,33 @@ mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
 
-class DatasetLabelTest(unittest.TestCase):
-    def test_includes_path_segment_between_name_and_output(self):
-        self.assertEqual(mod.dataset_label("ANI"), "ANI core")
+class ConfigTest(unittest.TestCase):
+    def test_datasets_include_daily_ani_variants(self):
+        self.assertEqual(
+            mod.DATASETS,
+            {
+                "ANI core": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/",
+                "ANI dummy": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Dummy/output/three_column/",
+                "ANI non-scopus-publication": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Non-scopus-publication/output/three_column/",
+                "ANI preprint": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Preprint/output/three_column/",
+                "APR": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/",
+                "IHR": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/IHR/output/three_column/",
+                "IPR": "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/IPR/output/three_column/",
+            },
+        )
 
-    def test_is_just_the_name_when_no_extra_segment(self):
-        self.assertEqual(mod.dataset_label("APR"), "APR")
-
-
-class LabelsTest(unittest.TestCase):
-    def test_labels_are_derived_for_every_dataset(self):
+    def test_labels_match_dataset_names(self):
         self.assertEqual(
             mod.LABELS,
-            {"ANI": "ANI core", "APR": "APR", "IHR": "IHR", "IPR": "IPR"},
+            {
+                "ANI core": "ANI core",
+                "ANI dummy": "ANI dummy",
+                "ANI non-scopus-publication": "ANI non-scopus-publication",
+                "ANI preprint": "ANI preprint",
+                "APR": "APR",
+                "IHR": "IHR",
+                "IPR": "IPR",
+            },
         )
 
 

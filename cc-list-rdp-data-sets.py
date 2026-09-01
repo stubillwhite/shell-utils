@@ -6,20 +6,16 @@ import cc_data_sets
 BUCKET = "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs"
 
 DATASETS = {
-    "ANI": f"{BUCKET}/ANI/Core/output/three_column/",
+    "ANI core": f"{BUCKET}/ANI/Core/output/three_column/",
+    "ANI dummy": f"{BUCKET}/ANI/Dummy/output/three_column/",
+    "ANI non-scopus": f"{BUCKET}/ANI/Non-scopus-publication/output/three_column/",
+    "ANI preprint": f"{BUCKET}/ANI/Preprint/output/three_column/",
     "APR": f"{BUCKET}/APR/output/three_column/",
     "IHR": f"{BUCKET}/IHR/output/three_column/",
     "IPR": f"{BUCKET}/IPR/output/three_column/",
 }
 
-
-def dataset_label(name):
-    segments = DATASETS[name].rstrip("/").split("/")
-    extra = segments[segments.index(name) + 1 : segments.index("output")]
-    return " ".join([name, *(segment.lower() for segment in extra)])
-
-
-LABELS = {name: dataset_label(name) for name in DATASETS}
+LABELS = {name: name for name in DATASETS}
 
 
 def main():
