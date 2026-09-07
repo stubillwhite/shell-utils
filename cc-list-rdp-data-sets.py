@@ -7,9 +7,9 @@ BUCKET = "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs"
 
 DATASETS = {
     "ANI core": f"{BUCKET}/ANI/Core/output/three_column/",
-    "ANI dummy": f"{BUCKET}/ANI/Dummy/output/three_column/",
     "ANI non-scopus": f"{BUCKET}/ANI/Non-scopus-publication/output/three_column/",
     "ANI preprint": f"{BUCKET}/ANI/Preprint/output/three_column/",
+    "ANI dummy": f"{BUCKET}/ANI/Dummy/output/three_column/",
     "APR": f"{BUCKET}/APR/output/three_column/",
     "IHR": f"{BUCKET}/IHR/output/three_column/",
     "IPR": f"{BUCKET}/IPR/output/three_column/",

@@ -26,6 +26,7 @@ class ConfigTest(unittest.TestCase):
             mod.PARSED,
             {
                 "ANI core": "s3://sccontent-parsed-ani-core-parquet-prod/",
+                "ANI dummy": "s3://sccontent-parsed-ani-dummy-parquet-prod/",
                 "APR": "s3://sccontent-parsed-apr-parquet-prod/",
                 "IPR": "s3://sccontent-parsed-ipr-parquet-prod/",
             },
