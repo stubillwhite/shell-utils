@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+# make run-lookup ARGS="--dataset mhub-current 27844528009" | format-xml | pygmentize
+
+SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+
+dataset=$1
+key=$2
+
+case "${dataset}" in
+    "rdp-ani")
+        region=us-east-2 ;;
+
+    "mhub-ani")
+        region=us-east-1 ;;
+    *)
+        echo "Unknown dataset ${dataset}"
+        exit 1 ;;
+esac
+
+pushd "${SCRIPT_DIR}" > /dev/null || exit 1
+make run-lookup ARGS="--db $1.duckdb --dataset ${dataset} --region ${region} ${key}"
+popd > /dev/null || exit 1

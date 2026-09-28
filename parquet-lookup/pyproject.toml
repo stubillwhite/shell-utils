@@ -1,0 +1,91 @@
+[tool.poetry]
+name = "parquet_lookup"
+version = "0.1.0"
+description = ""
+authors = ["John Doe <johndoe@mail.com>"]
+readme = "README.md"
+
+[tool.poetry.scripts]
+run-app = "parquet_lookup.__main__:main"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pip-audit = "^2.7.3"
+isort = "^5.13.2"
+monkeytype = "^23.3.0"
+duckdb = "^1.5.5"
+pyarrow = "^25.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.1"
+pytest-cov = "^5.0.0"
+coverage = "^7.4.4"
+pytest-mock = "^3.14.0"
+ruff = "^0.3.5"
+black = "^24.3.0"
+mypy = "^1.9.0"
+
+[solver]
+min-release-age = 7
+
+[[tool.poetry.source]]
+name = "pypi-default-virtual"
+url = "https://rt.artifactory.tio.systems/artifactory/api/pypi/pypi-default-virtual/simple"
+priority = "primary"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+########################################
+# Coverage
+########################################
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["parquet_lookup"]
+omit = ["__init__.py", "__main__.py"]
+
+########################################
+# Formatting
+########################################
+
+[tool.black]
+line-length = 120
+
+[tool.isort]
+profile = "black"
+
+########################################
+# Linting
+########################################
+
+[tool.ruff]
+src = ['src']
+extend-exclude = ['tests']
+line-length = 120
+
+[tool.ruff.lint]
+extend-select = [
+    "ANN",      # flake8-annotations for type annotations
+]
+extend-ignore = [
+    "ANN204",   # Missing return type annotation for special method
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = 'google'
+
+[tool.ruff.lint.isort]
+force-single-line = true
+
+########################################
+# Type checking
+########################################
+
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true

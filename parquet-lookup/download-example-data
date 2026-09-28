@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+IDS=(
+    0000002105
+    0000004795
+    0000004926
+    0000005092
+    0000007562
+    0000008501
+    0000009160
+    0000009182
+    0000011276
+    0000012249
+    9944237482
+    9944237483
+    9944240482
+    9944241508
+    9944241948
+    9944244795
+    9944248771
+    9944252155
+    9944265063
+    9944265460
+)
+
+mkdir -p example-data/mhub
+mkdir -p example-data/rdp
+
+for id in "${IDS[@]}"
+do
+    echo "${id}"
+
+    mhubPath="example-data/mhub/${id}.xml"
+    rdpPath="example-data/rdp/${id}.xml"
+
+    [ ! -f "${mhubPath}" ] && ./query-dataset mhub-ani "${id}" | xmllint --format - > "example-data/mhub/${id}.xml"
+    [ ! -f "${rdpPath}" ] && ./query-dataset rdp-ani  "${id}" | xmllint --format - > "example-data/rdp/${id}.xml"
+done

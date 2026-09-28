@@ -1,0 +1,14 @@
+.idea/
+.codegraph/
+
+dist/
+htmlcov/
+example-data/
+
+*.pyc
+.coverage
+.dmypy.json
+.make-sentinel.*
+.DS_Store
+
+*.duckdb
