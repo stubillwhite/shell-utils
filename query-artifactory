@@ -1,37 +1,71 @@
 #!/bin/bash
 #
 # Usage:
-#    query-artifactory.sh FLAGS [ARTIFACT]
+#    query-artifactory FLAGS [ARTIFACT]
 #
 # Flags:
 #    -v     Display versions
 #    -d     Download ARTIFACT
 
-username=white1
-token=$(cat ~/.ivy2/.credentials | grep password | sed -r 's/password=(.*)/\1/g')
+credentials_file="${HOME}/.ivy2/.credentials"
+url='https://rt.artifactory.tio.systems'
 
-# url='https://rt.artifactory.tio.systems'
-url='https://bts.artifactory.tio.systems'
+if [[ ! -r "${credentials_file}" ]]; then
+    printf 'Credentials file not found: %s\n' "${credentials_file}" >&2
+    exit 1
+fi
 
-function display-repository-contents() {
+username=$(awk -F= '$1 == "username" || $1 == "user" {
+    print substr($0, index($0, "=") + 1)
+    exit
+}' "${credentials_file}")
+token=$(awk -F= '$1 == "password" {
+    print substr($0, index($0, "=") + 1)
+    exit
+}' "${credentials_file}")
+
+if [[ -z "${username}" || -z "${token}" ]]; then
+    printf 'Credentials file must contain username and password: %s\n' "${credentials_file}" >&2
+    exit 1
+fi
+
+usage() {
+    printf 'Usage: %s [-v | -d ARTIFACT]\n' "$0" >&2
+}
+
+display-repository-contents() {
     local action=$1
     local repo=$2
+    local response
 
-    local response=$(curl -s \
+    if ! response=$(curl --fail --silent --show-error \
         -u "${username}:${token}" \
         -H "X-JFrog-Art-Api: ${token}" \
-        -H "Content-Type: text/plain" \
-        -X POST "${url}/artifactory/api/search/aql" \
-        -d@- <<EOF
+        -H 'Content-Type: text/plain' \
+        --request POST "${url}/artifactory/api/search/aql" \
+        --data-binary @- <<EOF
 items.find(
         {
             "repo":{"\$eq":"${repo}"}
         }
     )
 EOF
-    )
+    ); then
+        printf 'Artifactory request failed for repository: %s\n' "${repo}" >&2
+        return 1
+    fi
 
-case "${action}" in
+    if jq -e '(.errors? // []) | length > 0' <<< "${response}" > /dev/null; then
+        jq -r '.errors[]?.message // "Unknown Artifactory error"' <<< "${response}" >&2
+        return 1
+    fi
+
+    if ! jq -e '(.results? | type) == "array"' <<< "${response}" > /dev/null; then
+        printf 'Unexpected response from Artifactory for repository: %s\n' "${repo}" >&2
+        return 1
+    fi
+
+    case "${action}" in
         "verbose")
             jq -r '.results[] | select(.name | contains(".pom")) | [.repo, .path, .name] | @tsv' <<< "${response}" \
                 | sort \
@@ -50,25 +84,33 @@ case "${action}" in
     esac
 }
 
-function download-artefact() {
+download-artifact() {
     local path=$1
 
-wget \
-        --no-check-certificate \
+    if [[ -z "${path}" ]]; then
+        usage
+        return 1
+    fi
+
+    wget \
+        --https-only \
         --header "X-JFrog-Art-Api:${token}" \
         "${url}/artifactory/${path}"
 }
 
-if [[ $1 == "-d" ]]; then
-    download-artefact "$2"
-elif [[ $1 == "-v" ]]; then
-    action="verbose"
-    display-repository-contents ${action} sbt-recs-libs-local
-    display-repository-contents ${action} sbt-recs-apps-local
-    display-repository-contents ${action} maven-recs-libs-local
-else
-    action="default"
-    display-repository-contents ${action} sbt-recs-libs-local
-    display-repository-contents ${action} sbt-recs-apps-local
-    display-repository-contents ${action} maven-recs-libs-local
-fi
+case "${1:-}" in
+    "-d")
+        download-artifact "${2:-}"
+        ;;
+    "-v"|"")
+        action="verbose"
+        [[ "${1:-}" == "" ]] && action="default"
+        display-repository-contents "${action}" sbt-recs-libs-local &&
+        display-repository-contents "${action}" sbt-recs-apps-local &&
+        display-repository-contents "${action}" maven-recs-libs-local
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac
