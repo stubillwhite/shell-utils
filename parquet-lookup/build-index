@@ -11,12 +11,12 @@ IFS='' read -r -d '' MHUB_ANI <<"HEREDOC"
 HEREDOC
 
 # RDP ANI
-# --path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20260827-063016/
 IFS='' read -r -d '' RDP_ANI <<"HEREDOC"
 --dataset rdp-ani 
 --key-column id 
 --content-column xml 
 --db rdp-ani.duckdb
+--path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20260928-000001/
 --path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Non-scopus-publication/output/three_column/20260827-063016/
 --path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Preprint/output/three_column/20260827-063016/
 --region us-east-2
@@ -25,6 +25,6 @@ HEREDOC
 SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 
 pushd "${SCRIPT_DIR}" > /dev/null || exit 1
-make run-build-index ARGS="${MHUB_ANI//$'\n'/ }"
+# make run-build-index ARGS="${MHUB_ANI//$'\n'/ }"
 make run-build-index ARGS="${RDP_ANI//$'\n'/ }"
 popd > /dev/null || exit 1
