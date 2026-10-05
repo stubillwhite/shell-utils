@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 
-IDS=(
+ANI_IDS=(
     0000000495
-    0000003798
+    0000005452
+    # 0000003798
     0000060146
     0000293540
     0000330985
     0000399101
     0000624442
     0001064507
-    0001299207
+    # 0001299207
     0001578589
     0001736444
     0002520441
@@ -32,14 +33,16 @@ IDS=(
     84930814840
     84965091543
     84974738188
-    84978194584
+    # 84978194584
     85025485504
     85041021400
+    85113744324
     85120411159
     85140224788
     85166063826
     85166119862
     85179063929
+    85066474451
     85182563663
     85190990398
     85199049962
@@ -49,21 +52,23 @@ IDS=(
     105000030125
     105009048117
     105038585592
-    105043238687
+    # 105043238687
     105047511855
-    106000056705
+    # 106000056705
+    39049124138
+    71049129391
 )
 
-mkdir -p example-data/mhub
-mkdir -p example-data/rdp
+mkdir -p example-data-ani/mhub
+mkdir -p example-data-ani/rdp
 
-for id in "${IDS[@]}"
+for id in "${ANI_IDS[@]}"
 do
     echo "${id}"
 
-    mhubPath="example-data/mhub/${id}.xml"
-    rdpPath="example-data/rdp/${id}.xml"
+    mhubPath="example-data-ani/mhub/${id}.xml"
+    rdpPath="example-data-ani/rdp/${id}.xml"
 
-    [ ! -f "${mhubPath}" ] && ./query-dataset mhub-ani "${id}" | xmllint --format - > "example-data/mhub/${id}.xml"
-    [ ! -f "${rdpPath}" ] && ./query-dataset rdp-ani  "${id}" | xmllint --format - > "example-data/rdp/${id}.xml"
+    [ ! -f "${mhubPath}" ] && ./query-dataset mhub-ani "${id}" | xmllint --format - > "${mhubPath}"
+    [ ! -f "${rdpPath}" ] && ./query-dataset rdp-ani  "${id}" | xmllint --format - > "${rdpPath}"
 done

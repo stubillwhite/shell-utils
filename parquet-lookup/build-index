@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# vim:fdm=marker
+
+## ANI                                                                      {{{1
+## =============================================================================
+
 # MHub ANI
 IFS='' read -r -d '' MHUB_ANI <<"HEREDOC"
 --dataset mhub-ani 
@@ -22,9 +27,37 @@ IFS='' read -r -d '' RDP_ANI <<"HEREDOC"
 --region us-east-2
 HEREDOC
 
+## APR                                                                      {{{1
+## =============================================================================
+
+# MHub APR
+IFS='' read -r -d '' MHUB_APR <<"HEREDOC"
+--dataset mhub-apr 
+--key-column key 
+--content-column xml 
+--db mhub-apr.duckdb
+--path s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/20260825/
+--region us-east-1
+HEREDOC
+
+# RDP APR
+IFS='' read -r -d '' RDP_APR <<"HEREDOC"
+--dataset rdp-apr 
+--key-column id 
+--content-column xml 
+--db rdp-apr.duckdb
+--path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/20260827-063016/
+--region us-east-2
+HEREDOC
+
+## Script                                                                   {{{1
+## =============================================================================
+
 SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 
 pushd "${SCRIPT_DIR}" > /dev/null || exit 1
 # make run-build-index ARGS="${MHUB_ANI//$'\n'/ }"
-make run-build-index ARGS="${RDP_ANI//$'\n'/ }"
+# make run-build-index ARGS="${RDP_ANI//$'\n'/ }"
+# make run-build-index ARGS="${MHUB_APR//$'\n'/ }"
+# make run-build-index ARGS="${RDP_APR//$'\n'/ }"
 popd > /dev/null || exit 1

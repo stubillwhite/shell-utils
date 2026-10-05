@@ -13,6 +13,14 @@ case "${dataset}" in
 
     "mhub-ani")
         region=us-east-1 ;;
+
+    "rdp-apr")
+        region=us-east-2 ;;
+
+
+    "mhub-apr")
+        region=us-east-1 ;;
+
     *)
         echo "Unknown dataset ${dataset}"
         exit 1 ;;
