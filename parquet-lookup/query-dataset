@@ -27,5 +27,5 @@ case "${dataset}" in
 esac
 
 pushd "${SCRIPT_DIR}" > /dev/null || exit 1
-make run-lookup ARGS="--db $1.duckdb --dataset ${dataset} --region ${region} ${key}"
+make run-lookup ARGS="--db $1.duckdb --dataset ${dataset} --region ${region} ${key}" || exit $?
 popd > /dev/null || exit 1

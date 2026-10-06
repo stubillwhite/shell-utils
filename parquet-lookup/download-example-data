@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
 ANI_IDS=(
     0000000495
     0000005452
@@ -59,16 +61,54 @@ ANI_IDS=(
     71049129391
 )
 
-mkdir -p example-data-ani/mhub
-mkdir -p example-data-ani/rdp
+dataProduct="ani"
 
+datasetPath="example-data-${dataProduct}"
+
+mkdir -p "${datasetPath}/mhub"
+mkdir -p "${datasetPath}/rdp"
+
+temporaryPath=$(mktemp -d "${datasetPath}/.download.XXXXXX")
+trap 'rm -f "${temporaryPath}/raw.xml" "${temporaryPath}/formatted.xml"; rmdir "${temporaryPath}"' EXIT
+
+download_document() {
+    local dataset=$1
+    local id=$2
+    local outputPath=$3
+
+    if [ -s "${outputPath}" ]; then
+        return 0
+    fi
+
+    rm -f "${outputPath}" || return 1
+    echo "Downloading record ${id} from ${dataset}" >&2
+
+    if ! ./query-dataset "${dataset}" "${id}" > "${temporaryPath}/raw.xml"; then
+        echo "Failed to download record ${id} from ${dataset}" >&2
+        return 1
+    fi
+
+    if [ ! -s "${temporaryPath}/raw.xml" ]; then
+        echo "Skipping empty record ${id} from ${dataset}" >&2
+        return 0
+    fi
+
+    if ! xmllint --format "${temporaryPath}/raw.xml" > "${temporaryPath}/formatted.xml"; then
+        echo "Invalid XML for record ${id} from ${dataset}" >&2
+        return 1
+    fi
+
+    mv "${temporaryPath}/formatted.xml" "${outputPath}"
+}
+
+status=0
 for id in "${ANI_IDS[@]}"
 do
-    echo "${id}"
+    mhubPath="${datasetPath}/mhub/${id}.xml"
+    rdpPath="${datasetPath}/rdp/${id}.xml"
 
-    mhubPath="example-data-ani/mhub/${id}.xml"
-    rdpPath="example-data-ani/rdp/${id}.xml"
-
-    [ ! -f "${mhubPath}" ] && ./query-dataset mhub-ani "${id}" | xmllint --format - > "${mhubPath}"
-    [ ! -f "${rdpPath}" ] && ./query-dataset rdp-ani  "${id}" | xmllint --format - > "${rdpPath}"
+    download_document mhub-ani "${id}" "${mhubPath}" || status=1
+    download_document rdp-ani "${id}" "${rdpPath}" || status=1
 done
+
+exit "${status}"
