@@ -2,71 +2,45 @@
 
 set -euo pipefail
 
-ANI_IDS=(
-    0000000495
-    0000005452
-    # 0000003798
-    0000060146
-    0000293540
-    0000330985
-    0000399101
-    0000624442
-    0001064507
-    # 0001299207
-    0001578589
-    0001736444
-    0002520441
-    0002577475
-    0003825140
-    0007229937
-    0009645961
-    0012534354
-    0013272044
-    0015710802
-    0015770511
-    0020269406
-    0024627957
-    0025808442
-    0026200720
-    0028252355
-    6344262309
-    70350092471
-    77954073645
-    84930814840
-    84965091543
-    84974738188
-    # 84978194584
-    85025485504
-    85041021400
-    85113744324
-    85120411159
-    85140224788
-    85166063826
-    85166119862
-    85179063929
-    85066474451
-    85182563663
-    85190990398
-    85199049962
-    85199077742
-    85199097867
-    85213453465
-    105000030125
-    105009048117
-    105038585592
-    # 105043238687
-    105047511855
-    # 106000056705
-    39049124138
-    71049129391
+DATASETS=(
+    mhub-ani-20260825
+    rdp-ani-20261005
 )
 
-dataProduct="ani"
+ANI_IDS=(
+    33947698291
+    67349267665
+    84933475516
+    0015959772
+    84984577737
+    33846316389
+    80755130417
+    105039524809
+    105039939890
+    0022680705
+    0027356947
+    85050888684
+    85054369298
+    105041016484
+    84899753361
+    84864843568
+    84885188768
+    85147622675
+    85062192807
+    85091533507
+    105043746434
+    84966204039
+    34251003114
+    85125404927
+    84941827421
+)
 
-datasetPath="example-data-${dataProduct}"
+datasetPath="example-data"
 
-mkdir -p "${datasetPath}/mhub"
-mkdir -p "${datasetPath}/rdp"
+for dataset in "${DATASETS[@]}"
+do
+    mkdir -p "${datasetPath}/${dataset}"
+done
 
 temporaryPath=$(mktemp -d "${datasetPath}/.download.XXXXXX")
 trap 'rm -f "${temporaryPath}/raw.xml" "${temporaryPath}/formatted.xml"; rmdir "${temporaryPath}"' EXIT
@@ -104,11 +78,10 @@ download_document() {
 status=0
 for id in "${ANI_IDS[@]}"
 do
-    mhubPath="${datasetPath}/mhub/${id}.xml"
-    rdpPath="${datasetPath}/rdp/${id}.xml"
-
-    download_document mhub-ani "${id}" "${mhubPath}" || status=1
-    download_document rdp-ani "${id}" "${rdpPath}" || status=1
+    for dataset in "${DATASETS[@]}"
+    do
+        download_document "${dataset}" "${id}" "${datasetPath}/${dataset}/${id}.xml" || status=1
+    done
 done
 
 exit "${status}"

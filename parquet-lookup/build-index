@@ -2,62 +2,59 @@
 
 # vim:fdm=marker
 
-## ANI                                                                      {{{1
+set -euo pipefail
+
+## Selection                                                                {{{1
 ## =============================================================================
 
-# MHub ANI
-IFS='' read -r -d '' MHUB_ANI <<"HEREDOC"
---dataset mhub-ani 
---key-column key 
---content-column xml 
---db mhub-ani.duckdb
---path s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/20260825/
---region us-east-1
-HEREDOC
+# BUILD=(mhub_ani 20260825)
+# BUILD=(rdp_ani 20260928-000001 20260827-063016 20260827-063016)
+# BUILD=(rdp_ani 20261005-200000 20261005-200000 20261005-200000)
 
-# RDP ANI
-IFS='' read -r -d '' RDP_ANI <<"HEREDOC"
---dataset rdp-ani 
---key-column id 
---content-column xml 
---db rdp-ani.duckdb
---path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20260928-000001/
---path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Non-scopus-publication/output/three_column/20260827-063016/
---path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Preprint/output/three_column/20260827-063016/
---region us-east-2
-HEREDOC
-
-## APR                                                                      {{{1
+## Datasets                                                                 {{{1
 ## =============================================================================
 
-# MHub APR
-IFS='' read -r -d '' MHUB_APR <<"HEREDOC"
---dataset mhub-apr 
---key-column key 
---content-column xml 
---db mhub-apr.duckdb
---path s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/20260825/
---region us-east-1
-HEREDOC
+die() {
+    echo "build-index: $*" >&2
+    exit 1
+}
 
-# RDP APR
-IFS='' read -r -d '' RDP_APR <<"HEREDOC"
---dataset rdp-apr 
---key-column id 
---content-column xml 
---db rdp-apr.duckdb
---path s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/20260827-063016/
---region us-east-2
-HEREDOC
+index_args() {
+    local name=$1 key_column=$2 region=$3
+    shift 3
+    printf -- '--dataset %s --db %s.duckdb --key-column %s --content-column xml --region %s' \
+        "${name}" "${name}" "${key_column}" "${region}"
+    printf -- ' --path %s' "$@"
+}
+
+# MHub ANI: <timestamp>
+mhub_ani() {
+    (($# == 1)) || die "mhub_ani expects 1 timestamp, got $#"
+    index_args "mhub-ani-${1:0:8}" key us-east-1 \
+        "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/${1}/"
+}
+
+# RDP ANI: <core> <non-scopus-publication> <preprint> timestamps
+rdp_ani() {
+    (($# == 3)) || die "rdp_ani expects 3 timestamps (core, non-scopus, preprint), got $#"
+    local root=s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI
+    index_args "rdp-ani-${1:0:8}" id us-east-2 \
+        "${root}/Core/output/three_column/${1}/" \
+        "${root}/Non-scopus-publication/output/three_column/${2}/" \
+        "${root}/Preprint/output/three_column/${3}/"
+}
 
 ## Script                                                                   {{{1
 ## =============================================================================
 
-SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+ARGS=$("${BUILD[@]}")
+DATABASE=${ARGS#*--db }
+DATABASE=${DATABASE%% *}
 
-pushd "${SCRIPT_DIR}" > /dev/null || exit 1
-# make run-build-index ARGS="${MHUB_ANI//$'\n'/ }"
-# make run-build-index ARGS="${RDP_ANI//$'\n'/ }"
-# make run-build-index ARGS="${MHUB_APR//$'\n'/ }"
-# make run-build-index ARGS="${RDP_APR//$'\n'/ }"
-popd > /dev/null || exit 1
+SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+cd "${SCRIPT_DIR}"
+if [[ -e "${DATABASE}" ]]; then
+    echo "build-index: ${DATABASE} already exists; skipping index build" >&2
+else
+    make run-build-index ARGS="${ARGS}"
+fi
