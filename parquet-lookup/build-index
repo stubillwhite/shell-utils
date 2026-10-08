@@ -13,11 +13,15 @@ set -euo pipefail
 
 # RDP bugfix phase one
 # BUILD=(rdp_ani 20260928-000001 20260827-063016 20260827-063016)
-BUILD=(rdp_apr 20260827-063016)
+# BUILD=(rdp_apr 20260827-063016)
 
 # RDP bugfix phase two with new Golden Works
 # BUILD=(rdp_ani 20261005-200000 20261005-200000 20261005-200000)
 # BUILD=(rdp_apr 20261005-200000)
+
+# OpenAlex
+# BUILD=(mhub_openalex_ani 20260629 073848)
+BUILD=(rdp_openalex_ani 20261005-200000)
 
 ## Datasets                                                                 {{{1
 ## =============================================================================
@@ -28,17 +32,17 @@ die() {
 }
 
 index_args() {
-    local name=$1 key_column=$2 region=$3
-    shift 3
-    printf -- '--dataset %s --db %s.duckdb --key-column %s --content-column xml --region %s' \
-        "${name}" "${name}" "${key_column}" "${region}"
+    local name=$1 key_column=$2 content_column=$3 region=$4
+    shift 4
+    printf -- '--dataset %s --db %s.duckdb --key-column %s --content-column %s --region %s' \
+        "${name}" "${name}" "${key_column}" "${content_column}" "${region}"
     printf -- ' --path %s' "$@"
 }
 
 # MHub ANI: <timestamp>
 mhub_ani() {
     (($# == 1)) || die "mhub_ani expects 1 timestamp, got $#"
-    index_args "mhub-ani-${1:0:8}" key us-east-1 \
+    index_args "mhub-ani-${1:0:8}" key xml us-east-1 \
         "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/${1}/"
 }
 
@@ -46,7 +50,7 @@ mhub_ani() {
 rdp_ani() {
     (($# == 3)) || die "rdp_ani expects 3 timestamps (core, non-scopus, preprint), got $#"
     local root=s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI
-    index_args "rdp-ani-${1:0:8}" id us-east-2 \
+    index_args "rdp-ani-${1:0:8}" id xml us-east-2 \
         "${root}/Core/output/three_column/${1}/" \
         "${root}/Non-scopus-publication/output/three_column/${2}/" \
         "${root}/Preprint/output/three_column/${3}/"
@@ -54,14 +58,26 @@ rdp_ani() {
 
 mhub_apr() {
     (($# == 1)) || die "mhub_apr expects 1 timestamp, got $#"
-    index_args "mhub-apr-${1:0:8}" key us-east-1 \
+    index_args "mhub-apr-${1:0:8}" key xml us-east-1 \
         "s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/${1}/"
 }
 
 rdp_apr() {
     (($# == 1)) || die "rdp_apr expects 1 timestamp, got $#"
-    index_args "rdp-apr-${1:0:8}" id us-east-2 \
+    index_args "rdp-apr-${1:0:8}" id xml us-east-2 \
         "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${1}/"
+}
+
+mhub_openalex_ani() {
+    (($# == 2)) || die "mhub_openalex_ani expects 2 arguments (date, time), got $#"
+    index_args "mhub-openalex-ani-${1}" EID XML us-east-1 \
+        "s3://mhub-d2m-export-parquet-prod/ANI/${1}/Ani_Eid_XML_${1}_${2}.parquet"
+}
+
+rdp_openalex_ani() {
+    (($# == 1)) || die "rdp_openalex_ani expects 1 timestamp, got $#"
+    index_args "rdp-openalex-ani-${1:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/${1}/"
 }
 
 ## Script                                                                   {{{1

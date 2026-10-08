@@ -71,7 +71,6 @@ APR_IDS=(
     10038761600
     10038761700
     10038761800
-    10038762200
     10038764100
     10038765100
     10038765300
@@ -94,9 +93,44 @@ APR_IDS=(
     10038778500
 )
 
+OPENALEX_DATASETS=(
+    mhub-openalex-ani-20260629
+    rdp-openalex-ani-20261005
+)
+
+OPENALEX_IDS=(
+    0018283312
+    0019310174
+    0021190566
+    0024935629
+    0025559169
+    0025568314
+    0027755563
+    0029243526
+    0030438934
+    0033000284
+    0033934324
+    0034197966
+    0034590207
+    0034590222
+    0035789858
+    0036927273
+    0036931374
+    0036949280
+    0344996759
+    105000037281
+    105000475029
+    105000515447
+    105001081336
+    105001133097
+    105001539074
+    105010363437
+    105010366988
+)
+
 datasetPath="example-data"
 
-for dataset in "${ANI_DATASETS[@]}" "${APR_DATASETS[@]}"
+for dataset in "${ANI_DATASETS[@]}" "${APR_DATASETS[@]}" "${OPENALEX_DATASETS[@]}"
 do
     mkdir -p "${datasetPath}/${dataset}"
 done
@@ -146,6 +180,14 @@ done
 for id in "${APR_IDS[@]}"
 do
     for dataset in "${APR_DATASETS[@]}"
+    do
+        download_document "${dataset}" "${id}" "${datasetPath}/${dataset}/${id}.xml" || status=1
+    done
+done
+
+for id in "${OPENALEX_IDS[@]}"
+do
+    for dataset in "${OPENALEX_DATASETS[@]}"
     do
         download_document "${dataset}" "${id}" "${datasetPath}/${dataset}/${id}.xml" || status=1
     done

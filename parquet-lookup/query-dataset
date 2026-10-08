@@ -20,6 +20,12 @@ case "${dataset}" in
     mhub-apr|mhub-apr-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-1 ;;
 
+    rdp-openalex-ani|rdp-openalex-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        region=us-east-2 ;;
+
+    mhub-openalex-ani|mhub-openalex-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        region=us-east-1 ;;
+
     *)
         echo "Unknown dataset ${dataset}"
         exit 1 ;;
