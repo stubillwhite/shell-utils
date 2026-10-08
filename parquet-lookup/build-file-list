@@ -2,13 +2,13 @@
 
 set -euo pipefail
 
-DATA_DIR=$(readlink -f "${1:-example-data-ani}")
+DATA_DIR=$(readlink -f "${1:-example-data}")
 
 list_files() {
     find "$1" -maxdepth 1 -type f ! -name '.*' -exec basename {} \; | sort
 }
 
-comm -12 <(list_files "${DATA_DIR}/mhub") <(list_files "${DATA_DIR}/rdp") \
+comm -12 <(list_files "${DATA_DIR}/mhub-ani-20260825") <(list_files "${DATA_DIR}/rdp-ani-20261005") \
     | while IFS= read -r name; do
-        echo "${DATA_DIR}/mhub/${name} ${DATA_DIR}/rdp/${name}"
+        echo "${DATA_DIR}/mhub-ani-20260825/${name} ${DATA_DIR}/rdp-ani-20261005/${name}"
     done
