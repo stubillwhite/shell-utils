@@ -100,6 +100,10 @@ run-build-index: deps ## Build one dataset's index (use ARGS='--dataset name --p
 run-lookup: deps ## Look up a key (use ARGS='--db key_index.duckdb KEY')
 	@poetry run run-app lookup $(ARGS)
 
+.PHONY: run-key-counts
+run-key-counts: deps ## Print key counts for all local DuckDB databases
+	@poetry run python print-table-key-counts.py
+
 test-single-file: deps ## Run a single test file with coverage
 	@echo 'Running test $(TEST_FILE)'
 	@poetry run coverage run --source=src -m pytest $(TEST_FILE) 

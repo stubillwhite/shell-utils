@@ -595,3 +595,100 @@ def test_builder_rejects_missing_content_column_without_replacing_old_index(tmp_
         )
 
     assert [(name, key) for name, _, key, _ in indexed_rows(database)] == [("sample", "one")]
+
+
+def flaky_parquet_file(mocker: MockerFixture, failures: int, error: Exception) -> dict[str, int]:
+    calls = {"count": 0}
+    real_parquet_file = pq.ParquetFile
+
+    def factory(*args: object, **kwargs: object) -> pq.ParquetFile:
+        calls["count"] += 1
+        if calls["count"] <= failures:
+            raise error
+        return real_parquet_file(*args, **kwargs)
+
+    mocker.patch.object(app.pq, "ParquetFile", side_effect=factory)
+    return calls
+
+
+def test_index_one_file_retries_transient_os_errors(tmp_path: Path, mocker: MockerFixture) -> None:
+    write_parquet(tmp_path / "part.parquet", {"key": ["a", "b"], "xml_content": ["<a/>", "<b/>"]})
+    calls = flaky_parquet_file(mocker, failures=2, error=OSError("AWS Error NETWORK_CONNECTION"))
+
+    table = app.index_one_file(
+        pafs.LocalFileSystem(), 0, str(tmp_path / "part.parquet"), attempts=3, retry_delay_seconds=0
+    )
+
+    assert table.column("key").to_pylist() == ["a", "b"]
+    assert calls["count"] == 3
+
+
+def test_index_one_file_raises_once_attempts_are_exhausted(tmp_path: Path, mocker: MockerFixture) -> None:
+    write_parquet(tmp_path / "part.parquet", {"key": ["a"], "xml_content": ["<a/>"]})
+    calls = flaky_parquet_file(mocker, failures=10, error=OSError("timeout"))
+
+    with pytest.raises(OSError, match="timeout"):
+        app.index_one_file(pafs.LocalFileSystem(), 0, str(tmp_path / "part.parquet"), attempts=3, retry_delay_seconds=0)
+
+    assert calls["count"] == 3
+
+
+def test_index_one_file_does_not_retry_permanent_errors(tmp_path: Path, mocker: MockerFixture) -> None:
+    write_parquet(tmp_path / "part.parquet", {"key": ["a"], "xml_content": ["<a/>"]})
+    calls = flaky_parquet_file(mocker, failures=10, error=ValueError("bad file"))
+
+    with pytest.raises(ValueError, match="bad file"):
+        app.index_one_file(pafs.LocalFileSystem(), 0, str(tmp_path / "part.parquet"), attempts=3, retry_delay_seconds=0)
+
+    assert calls["count"] == 1
+
+
+def test_index_one_file_records_row_groups_for_every_row(tmp_path: Path) -> None:
+    write_parquet(
+        tmp_path / "part.parquet",
+        {"key": ["a", "b", "c"], "xml_content": ["<a/>", "<b/>", "<c/>"]},
+        row_group_size=2,
+    )
+
+    table = app.index_one_file(pafs.LocalFileSystem(), 7, str(tmp_path / "part.parquet"))
+
+    assert table.to_pydict() == {"key": ["a", "b", "c"], "file_id": [7, 7, 7], "row_group": [0, 0, 1]}
+    assert table.schema.field("file_id").type == pa.int32()
+    assert table.schema.field("row_group").type == pa.int32()
+
+
+def test_s3_filesystem_uses_tolerant_timeouts_and_retries(mocker: MockerFixture) -> None:
+    s3_filesystem = mocker.patch.object(app.pafs, "S3FileSystem")
+
+    app._s3_filesystem("us-east-2")
+
+    keyword_arguments = s3_filesystem.call_args.kwargs
+    assert keyword_arguments["region"] == "us-east-2"
+    assert keyword_arguments["request_timeout"] >= 30
+    assert keyword_arguments["connect_timeout"] >= 10
+    assert keyword_arguments["retry_strategy"] is not None
+
+
+def test_build_index_limits_files_in_flight_and_stops_submitting_after_failure(
+    tmp_path: Path, mocker: MockerFixture
+) -> None:
+    dataset = tmp_path / "dataset"
+    for number in range(20):
+        write_parquet(dataset / f"part-{number:02d}.parquet", {"key": [str(number)], "xml_content": ["<x/>"]})
+    calls: list[str] = []
+
+    def failing_index_one_file(_filesystem: object, _file_id: int, file_path: str, *_args: object) -> pa.Table:
+        calls.append(file_path)
+        raise OSError("boom")
+
+    mocker.patch.object(app, "index_one_file", side_effect=failing_index_one_file)
+
+    with pytest.raises(OSError, match="boom"):
+        app.build_key_index(
+            db_path=str(tmp_path / "index.duckdb"),
+            dataset=app.DatasetSpec("archive", (str(dataset),)),
+            workers=1,
+            filesystem=pafs.LocalFileSystem(),
+        )
+
+    assert len(calls) <= 4

@@ -1,5 +1,6 @@
 import argparse
 import concurrent.futures as futures
+import itertools
 import logging
 import pathlib
 import sys
@@ -15,6 +16,8 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
+
+IN_FLIGHT_FILES_PER_WORKER = 2
 
 
 @dataclass(frozen=True)
@@ -52,8 +55,18 @@ def _normalized_path(path: str) -> str:
     return str(pathlib.Path(path).expanduser().resolve())
 
 
+S3_CONNECT_TIMEOUT_SECONDS = 30.0
+S3_REQUEST_TIMEOUT_SECONDS = 120.0
+S3_MAX_ATTEMPTS = 10
+
+
 def _s3_filesystem(region: str | None) -> pafs.S3FileSystem:
-    return pafs.S3FileSystem(region=region) if region else pafs.S3FileSystem()
+    options: dict[str, object] = {
+        "connect_timeout": S3_CONNECT_TIMEOUT_SECONDS,
+        "request_timeout": S3_REQUEST_TIMEOUT_SECONDS,
+        "retry_strategy": pafs.AwsStandardS3RetryStrategy(max_attempts=S3_MAX_ATTEMPTS),
+    }
+    return pafs.S3FileSystem(region=region, **options) if region else pafs.S3FileSystem(**options)
 
 
 def list_parquet_files(filesystem: pafs.FileSystem, dataset_path: str) -> list[str]:
@@ -69,14 +82,28 @@ def list_parquet_files(filesystem: pafs.FileSystem, dataset_path: str) -> list[s
     )
 
 
-def index_one_file(
+def _repeated_int32(value: int, length: int) -> pa.Array:
+    return pa.repeat(pa.scalar(value, type=pa.int32()), length)
+
+
+def _index_row_group(parquet_file: pq.ParquetFile, file_id: int, row_group: int, key_column: str) -> pa.Table:
+    keys = parquet_file.read_row_group(row_group, columns=[key_column]).column(key_column)
+    return pa.table(
+        {
+            "key": keys,
+            "file_id": _repeated_int32(file_id, len(keys)),
+            "row_group": _repeated_int32(row_group, len(keys)),
+        }
+    )
+
+
+def _index_file_once(
     filesystem: pafs.FileSystem,
     file_id: int,
     file_path: str,
-    key_column: str = "key",
-    content_column: str = "xml_content",
+    key_column: str,
+    content_column: str,
 ) -> pa.Table:
-    logger.info("Processing %s", file_path)
     parquet_file = pq.ParquetFile(_filesystem_path(file_path), filesystem=filesystem)
     available_columns = set(parquet_file.schema_arrow.names)
     missing_columns = {key_column, content_column} - available_columns
@@ -86,16 +113,7 @@ def index_one_file(
             f"available columns: {', '.join(sorted(available_columns))}"
         )
     tables = [
-        pa.table(
-            {
-                "key": parquet_file.read_row_group(row_group, columns=[key_column]).column(key_column),
-                "file_id": pa.array([file_id] * parquet_file.metadata.row_group(row_group).num_rows, type=pa.int32()),
-                "row_group": pa.array(
-                    [row_group] * parquet_file.metadata.row_group(row_group).num_rows,
-                    type=pa.int32(),
-                ),
-            }
-        )
+        _index_row_group(parquet_file, file_id, row_group, key_column)
         for row_group in range(parquet_file.num_row_groups)
     ]
     if not tables:
@@ -107,6 +125,30 @@ def index_one_file(
             }
         )
     return pa.concat_tables(tables)
+
+
+def index_one_file(
+    filesystem: pafs.FileSystem,
+    file_id: int,
+    file_path: str,
+    key_column: str = "key",
+    content_column: str = "xml_content",
+    attempts: int = 4,
+    retry_delay_seconds: float = 2.0,
+) -> pa.Table:
+    logger.info("Processing %s", file_path)
+    for attempt in range(1, attempts + 1):
+        try:
+            return _index_file_once(filesystem, file_id, file_path, key_column, content_column)
+        except OSError as error:
+            if attempt == attempts:
+                raise
+            delay = retry_delay_seconds * 2 ** (attempt - 1)
+            logger.warning(
+                "Retrying %s after attempt %d/%d failed: %s (in %.1fs)", file_path, attempt, attempts, error, delay
+            )
+            time.sleep(delay)
+    raise AssertionError("attempts must be at least 1")
 
 
 def _create_index_schema(connection: duckdb.DuckDBPyConnection) -> None:
@@ -189,34 +231,46 @@ def _index_parquet_files(
     if file_rows:
         connection.executemany("INSERT INTO files VALUES (?, ?, ?, ?, ?)", file_rows)
     total_keys = 0
+    completed_count = 0
+    max_in_flight = workers * IN_FLIGHT_FILES_PER_WORKER
+    remaining = iter(enumerate(parquet_files))
     with futures.ThreadPoolExecutor(max_workers=workers) as pool:
-        pending = {
-            pool.submit(
-                index_one_file,
-                parquet_file.filesystem,
-                first_file_id + offset,
-                parquet_file.path,
-                key_column,
-                content_column,
-            ): parquet_file.path
-            for offset, parquet_file in enumerate(parquet_files)
-        }
-        for completed_count, future in enumerate(futures.as_completed(pending), start=1):
-            table = future.result()
-            connection.register("index_batch", table)
-            try:
-                connection.execute('INSERT INTO key_index SELECT "key", file_id, row_group FROM index_batch')
-            finally:
-                connection.unregister("index_batch")
-            total_keys += table.num_rows
-            logger.info(
-                "[%s] Indexed %s (%d keys) [%d/%d]",
-                dataset_name,
-                pending[future],
-                table.num_rows,
-                completed_count,
-                len(parquet_files),
-            )
+        pending: dict[futures.Future[pa.Table], str] = {}
+
+        def submit_up_to_limit() -> None:
+            for offset, parquet_file in itertools.islice(remaining, max_in_flight - len(pending)):
+                future = pool.submit(
+                    index_one_file,
+                    parquet_file.filesystem,
+                    first_file_id + offset,
+                    parquet_file.path,
+                    key_column,
+                    content_column,
+                )
+                pending[future] = parquet_file.path
+
+        submit_up_to_limit()
+        while pending:
+            done, _ = futures.wait(pending, return_when=futures.FIRST_COMPLETED)
+            for future in done:
+                file_path = pending.pop(future)
+                table = future.result()
+                connection.register("index_batch", table)
+                try:
+                    connection.execute('INSERT INTO key_index SELECT "key", file_id, row_group FROM index_batch')
+                finally:
+                    connection.unregister("index_batch")
+                total_keys += table.num_rows
+                completed_count += 1
+                logger.info(
+                    "[%s] Indexed %s (%d keys) [%d/%d]",
+                    dataset_name,
+                    file_path,
+                    table.num_rows,
+                    completed_count,
+                    len(parquet_files),
+                )
+            submit_up_to_limit()
     return total_keys
 
 

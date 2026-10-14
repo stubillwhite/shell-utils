@@ -21,7 +21,10 @@ set -euo pipefail
 
 # OpenAlex
 # BUILD=(mhub_openalex_ani 20260629 073848)
-BUILD=(rdp_openalex_ani 20261005-200000)
+# BUILD=(rdp_openalex_ani 20261005-200000)
+
+# RDP bugfix phase three with fixes following Golden Works regressions
+BUILD=(rdp_ani 20261013-000001 20261013-000001 20261013-000001)
 
 ## Datasets                                                                 {{{1
 ## =============================================================================

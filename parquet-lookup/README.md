@@ -78,6 +78,14 @@ Write the result to `<out-dir>/<dataset>.xml` instead of stdout using `--out-dir
 make run-lookup ARGS='--db key_index.duckdb --out-dir ./out KEY123'
 ```
 
+## Count indexed keys ##
+
+Print the number of indexed keys in each top-level `.duckdb` file in this directory:
+
+```shell
+make run-key-counts
+```
+
 ## Download example documents ##
 
 Run `./download-example-data` from this directory after building the selected indexes. It creates

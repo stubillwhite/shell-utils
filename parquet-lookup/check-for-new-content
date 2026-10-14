@@ -1,0 +1,31 @@
+#!/usr/bin/env zsh
+
+source $HOME/.zshrc
+
+aws-login sc-content prod > /dev/null
+
+TIMESTAMP="20261013-000001"
+
+# s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20261013-000000/
+
+DATASETS=(
+    "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${TIMESTAMP}/"
+    "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/${TIMESTAMP}/"
+    "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Non-scopus-publication/output/three_column/${TIMESTAMP}/"
+    "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Preprint/output/three_column/${TIMESTAMP}/"
+)
+
+# DATASETS=(
+#     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/"
+#     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/"
+#     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Non-scopus-publication/output/three_column/"
+#     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Preprint/output/three_column/"
+# )
+
+for dataset in "${DATASETS[@]}"; do
+    echo "${dataset}"
+    aws s3 ls "${dataset}" 2>/dev/null | head -n 3 | gsed 's/^/  /'
+    echo
+done | highlight green '[0-9]{4}-[0-9]{2}-[0-9]{2}'
+
+
