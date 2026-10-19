@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-mhub="mhub-openalex-ani-20260629.duckdb"
-rdp="rdp-openalex-ani-20261005.duckdb"
+mhub="mhub-ani-20260825.duckdb"
+rdp="rdp-ani-20261013.duckdb"
 
 duckdb --ascii -c "
 attach '${mhub}' as mhub;
@@ -11,6 +11,5 @@ attach '${rdp}' as rdp;
 select distinct 
     m.key 
 from mhub.key_index m inner join rdp.key_index r on m.key = r.key 
-order by key asc 
 limit 25;
 "

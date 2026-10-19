@@ -7,14 +7,16 @@ SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 pushd "${SCRIPT_DIR}" > /dev/null || exit 1
 
 DATA_DIR=$(readlink -f "${1:-example-data}")
+mhubDir="${DATA_DIR}/mhub-ani-20260825"
+rdpDir="${DATA_DIR}/rdp-ani-20261013"
 
 list_files() {
     find "$1" -maxdepth 1 -type f ! -name '.*' -exec basename {} \; | sort
 }
 
-comm -12 <(list_files "${DATA_DIR}/mhub-ani-20260825") <(list_files "${DATA_DIR}/rdp-ani-20261005") \
+comm -12 <(list_files "${mhubDir}") <(list_files "${rdpDir}") \
     | while IFS= read -r name; do
-        echo "${DATA_DIR}/mhub-ani-20260825/${name} ${DATA_DIR}/rdp-ani-20261005/${name}"
+        echo "${mhubDir}/${name} ${rdpDir}/${name}"
     done
 
 popd > /dev/null || exit 1

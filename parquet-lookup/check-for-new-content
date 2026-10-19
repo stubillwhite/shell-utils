@@ -4,7 +4,7 @@ source $HOME/.zshrc
 
 aws-login sc-content prod > /dev/null
 
-TIMESTAMP="20261013-000001"
+TIMESTAMP="20261016-094451"
 
 # s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20261013-000000/
 
@@ -27,5 +27,3 @@ for dataset in "${DATASETS[@]}"; do
     aws s3 ls "${dataset}" 2>/dev/null | head -n 3 | gsed 's/^/  /'
     echo
 done | highlight green '[0-9]{4}-[0-9]{2}-[0-9]{2}'
-
-

@@ -24,7 +24,12 @@ set -euo pipefail
 # BUILD=(rdp_openalex_ani 20261005-200000)
 
 # RDP bugfix phase three with fixes following Golden Works regressions
-BUILD=(rdp_ani 20261013-000001 20261013-000001 20261013-000001)
+# BUILD=(rdp_ani 20261013-000001 20261013-000001 20261013-000001)
+# BUILD=(rdp_apr 20261013-000001)
+
+# RDP bugfix phase four
+# BUILD=(rdp_ani 20261016-094451 20261016-094451 20261016-094451)
+BUILD=(rdp_apr 20261016-094451)
 
 ## Datasets                                                                 {{{1
 ## =============================================================================
