@@ -6,8 +6,6 @@ aws-login sc-content prod > /dev/null
 
 TIMESTAMP="20261016-094451"
 
-# s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20261013-000000/
-
 DATASETS=(
     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${TIMESTAMP}/"
     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/${TIMESTAMP}/"

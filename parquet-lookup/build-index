@@ -29,7 +29,10 @@ set -euo pipefail
 
 # RDP bugfix phase four
 # BUILD=(rdp_ani 20261016-094451 20261016-094451 20261016-094451)
-BUILD=(rdp_apr 20261016-094451)
+# BUILD=(rdp_apr 20261016-094451)
+
+# RDP EKB
+BUILD=(rdp_ekb_ani 20261016-094451)
 
 ## Datasets                                                                 {{{1
 ## =============================================================================
@@ -86,6 +89,12 @@ rdp_openalex_ani() {
     (($# == 1)) || die "rdp_openalex_ani expects 1 timestamp, got $#"
     index_args "rdp-openalex-ani-${1:0:8}" id xml us-east-2 \
         "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/${1}/"
+}
+
+rdp_ekb_ani() {
+    (($# == 1)) || die "rdp_ekb_ani expects 1 timestamp, got $#"
+    index_args "rdp-ekb-ani-${1:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/ekb/ANI/Core/output/three_column/${1}/"
 }
 
 ## Script                                                                   {{{1

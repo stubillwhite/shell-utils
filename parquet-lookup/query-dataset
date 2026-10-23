@@ -11,6 +11,9 @@ case "${dataset}" in
     rdp-ani|rdp-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-2 ;;
 
+    rdp-ekb-ani|rdp-ekb-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        region=us-east-2 ;;
+
     mhub-ani|mhub-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-1 ;;
 

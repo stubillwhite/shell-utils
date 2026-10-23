@@ -8,7 +8,7 @@ pushd "${SCRIPT_DIR}" > /dev/null || exit 1
 
 DATA_DIR=$(readlink -f "${1:-example-data}")
 mhubDir="${DATA_DIR}/mhub-ani-20260825"
-rdpDir="${DATA_DIR}/rdp-ani-20261013"
+rdpDir="${DATA_DIR}/rdp-ani-20261016"
 
 list_files() {
     find "$1" -maxdepth 1 -type f ! -name '.*' -exec basename {} \; | sort

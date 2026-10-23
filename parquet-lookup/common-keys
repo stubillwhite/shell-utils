@@ -3,7 +3,9 @@
 set -euo pipefail
 
 mhub="mhub-ani-20260825.duckdb"
-rdp="rdp-ani-20261013.duckdb"
+rdp="rdp-ani-20261016.duckdb"
+
+echo "Finding common keys in ${mhub} and ${rdp}"
 
 duckdb --ascii -c "
 attach '${mhub}' as mhub;
