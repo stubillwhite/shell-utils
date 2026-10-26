@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+id=$1
+
+mkdir -p ./upload
+rm ./upload/*.xml
+
+find . -name "${id}*" \
+    | while read -r f; do 
+        outputFilename=$(basename "$(dirname "${f}")" | cut -d- -f1)-$(basename "${f}")
+        cp "$f" "./upload/${outputFilename}"
+    done
+
+open ./upload
