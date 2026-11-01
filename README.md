@@ -11,3 +11,7 @@ Random scripts that I find useful.
 
 - `git-list-file-changes` - List file changes in Git with a timestamp and percentage changed
 - `git-open` - Open a local file in the relevant website hosting the code
+
+## Subprojects ##
+
+- `parquet-lookup` - Scripts for looking up RDP items in S3 parquet data sets

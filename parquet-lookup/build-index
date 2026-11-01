@@ -11,10 +11,6 @@ set -euo pipefail
 # BUILD=(mhub_ani 20260825)
 # BUILD=(mhub_apr 20260825)
 
-# RDP bugfix phase one
-# BUILD=(rdp_ani 20260928-000001 20260827-063016 20260827-063016)
-# BUILD=(rdp_apr 20260827-063016)
-
 # RDP bugfix phase two with new Golden Works
 # BUILD=(rdp_ani 20261005-200000 20261005-200000 20261005-200000)
 # BUILD=(rdp_apr 20261005-200000)
