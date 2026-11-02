@@ -4,7 +4,9 @@ source $HOME/.zshrc
 
 aws-login sc-content prod > /dev/null
 
-TIMESTAMP="20261016-094451"
+source "${0:A:h}/data-versions" || exit 1
+
+TIMESTAMP="${RDP_VERSION:?RDP_VERSION is not set in data-versions}"
 
 DATASETS=(
     "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${TIMESTAMP}/"

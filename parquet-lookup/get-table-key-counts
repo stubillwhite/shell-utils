@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+poetry run python print-table-key-counts.py \
+    | sort

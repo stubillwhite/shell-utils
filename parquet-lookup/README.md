@@ -19,40 +19,47 @@ make run-build-index ARGS='\
 
 Each build replaces that dataset’s entries across all paths in one transaction; other datasets remain in the index.
 
-### ANI and APR presets ###
+### Data versions ###
 
-The `build-index` wrapper provides MHub and RDP presets for ANI and APR. Uncomment exactly one `BUILD` selection
-near the top of the script, then run `./build-index`. For APR, choose either:
-
-```bash
-BUILD=(mhub_apr 20260825)
-```
-
-or:
+The MHub and RDP versions used by every helper script (`build-index`, `download-example-data`, `common-keys`,
+`build-file-list`, `check-for-new-content`) and by the `core-complete-compare` shell function are defined in one
+file, `data-versions`:
 
 ```bash
-BUILD=(rdp_apr 20261005-200000)
+MHUB_VERSION=20260825
+RDP_VERSION=20261016-094451
+MHUB_OPENALEX_VERSION=20260629-073848
+RDP_OPENALEX_VERSION=20261005-200000
+RDP_EKB_VERSION=20261016-094451
 ```
 
-Each APR preset accepts one timestamp and indexes one S3 path. MHub uses `key` / `xml` columns in `us-east-1`;
-RDP uses `id` / `xml` columns in `us-east-2`. The full timestamp selects the S3 prefix, while its first eight
-characters determine the dataset and database names: `mhub-apr-20260825.duckdb` or `rdp-apr-20261005.duckdb`
-for these examples. Databases are stored beside the script; if the selected database already exists, the wrapper
-skips the build. It indexes S3 data directly rather than downloading all Parquet files locally.
+To move every tool to a new data drop, edit these values and run `./build-index`. The full value selects the S3
+prefix, while its first eight characters (the date) determine dataset and database names, for example
+`rdp-ani-20261016.duckdb`. RDP ANI Core, Non-scopus-publication and Preprint all use `RDP_VERSION`.
+`MHUB_OPENALEX_VERSION` is `<date>-<time>` and selects the single file
+`s3://mhub-d2m-export-parquet-prod/ANI/<date>/Ani_Eid_XML_<date>_<time>.parquet`.
 
-For OpenAlex ANI, choose one of:
+### Index presets ###
+
+`./build-index` with no arguments builds every preset; pass one or more preset names to build only those:
 
 ```bash
-BUILD=(mhub_openalex_ani 20260629 073848)
-BUILD=(rdp_openalex_ani 20261005-200000)
+./build-index
+./build-index rdp_ani rdp_apr
 ```
 
-MHub accepts a date and time and indexes the single file
-`s3://mhub-d2m-export-parquet-prod/ANI/20260629/Ani_Eid_XML_20260629_073848.parquet`.
-RDP accepts one timestamp and indexes the directory
-`s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/20261005-200000/`.
-MHub uses `EID` / `XML` columns in `us-east-1`; RDP uses `id` / `xml` columns in `us-east-2`. They produce
-`mhub-openalex-ani-20260629.duckdb` and `rdp-openalex-ani-20261005.duckdb`, respectively.
+| Preset              | Version                 | Columns       | Region      |
+|---------------------|-------------------------|---------------|-------------|
+| `mhub_ani`          | `MHUB_VERSION`          | `key` / `xml` | `us-east-1` |
+| `rdp_ani`           | `RDP_VERSION`           | `id` / `xml`  | `us-east-2` |
+| `mhub_apr`          | `MHUB_VERSION`          | `key` / `xml` | `us-east-1` |
+| `rdp_apr`           | `RDP_VERSION`           | `id` / `xml`  | `us-east-2` |
+| `mhub_openalex_ani` | `MHUB_OPENALEX_VERSION` | `EID` / `XML` | `us-east-1` |
+| `rdp_openalex_ani`  | `RDP_OPENALEX_VERSION`  | `id` / `xml`  | `us-east-2` |
+| `rdp_ekb_ani`       | `RDP_EKB_VERSION`       | `id` / `xml`  | `us-east-2` |
+
+Databases are stored beside the script; if a selected database already exists, the wrapper skips that build. It
+indexes S3 data directly rather than downloading all Parquet files locally.
 
 ## Look up a key ##
 
@@ -90,5 +97,5 @@ make run-key-counts
 
 Run `./download-example-data` from this directory after building the selected indexes. It creates
 `example-data/<dataset>/` directories for ANI, APR, and OpenAlex ANI, downloads and formats the configured XML
-records, and skips existing nonempty files. Dataset names use only the date, even when the indexed
-S3 prefix contains a full timestamp (for example, `rdp-apr-20260827` for `20260827-063016`).
+records, and skips existing nonempty files. Dataset names come from `data-versions` and use only the date, even
+when the indexed S3 prefix contains a full timestamp (for example, `rdp-apr-20261016` for `20261016-094451`).

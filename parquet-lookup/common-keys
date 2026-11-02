@@ -2,8 +2,12 @@
 
 set -euo pipefail
 
-mhub="mhub-ani-20260825.duckdb"
-rdp="rdp-ani-20261016.duckdb"
+SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+# shellcheck source=data-versions
+source "${SCRIPT_DIR}/data-versions"
+
+mhub="mhub-ani-${MHUB_VERSION:0:8}.duckdb"
+rdp="rdp-ani-${RDP_VERSION:0:8}.duckdb"
 
 echo "Finding common keys in ${mhub} and ${rdp}"
 

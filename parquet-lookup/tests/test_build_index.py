@@ -5,20 +5,80 @@ from pathlib import Path
 
 import pytest
 
+from tests.data_versions import copy_script
+from tests.data_versions import stub
+from tests.data_versions import write_data_versions
+
+RDP_ROOT = "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod"
+
+EXPECTED = {
+    "mhub_ani": (
+        "mhub-ani-20990101",
+        "key",
+        "xml",
+        "us-east-1",
+        ["s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/20990101/"],
+    ),
+    "rdp_ani": (
+        "rdp-ani-20990202",
+        "id",
+        "xml",
+        "us-east-2",
+        [
+            f"{RDP_ROOT}/xocs/ANI/Core/output/three_column/20990202-111111/",
+            f"{RDP_ROOT}/xocs/ANI/Non-scopus-publication/output/three_column/20990202-111111/",
+            f"{RDP_ROOT}/xocs/ANI/Preprint/output/three_column/20990202-111111/",
+        ],
+    ),
+    "mhub_apr": (
+        "mhub-apr-20990101",
+        "key",
+        "xml",
+        "us-east-1",
+        ["s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/20990101/"],
+    ),
+    "rdp_apr": (
+        "rdp-apr-20990202",
+        "id",
+        "xml",
+        "us-east-2",
+        [f"{RDP_ROOT}/xocs/APR/output/three_column/20990202-111111/"],
+    ),
+    "mhub_openalex_ani": (
+        "mhub-openalex-ani-20990303",
+        "EID",
+        "XML",
+        "us-east-1",
+        ["s3://mhub-d2m-export-parquet-prod/ANI/20990303/Ani_Eid_XML_20990303_222222.parquet"],
+    ),
+    "rdp_openalex_ani": (
+        "rdp-openalex-ani-20990404",
+        "id",
+        "xml",
+        "us-east-2",
+        [f"{RDP_ROOT}/openalex/ANI/Core/output/three_column/20990404-333333/"],
+    ),
+    "rdp_ekb_ani": (
+        "rdp-ekb-ani-20990505",
+        "id",
+        "xml",
+        "us-east-2",
+        [f"{RDP_ROOT}/ekb/ANI/Core/output/three_column/20990505-444444/"],
+    ),
+}
+
 
 def run_build_index(
-    *, tmp_path: Path, selection: str, existing_database: str | None = None
+    *, tmp_path: Path, presets: list[str], existing_databases: list[str] = [], with_versions: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    source = (Path(__file__).resolve().parents[1] / "build-index").read_text()
-    script = tmp_path / "build-index"
-    script.write_text(source.replace('ARGS=$("${BUILD[@]}")', f'BUILD=({selection})\nARGS=$("${{BUILD[@]}}")'))
-    make = tmp_path / "make"
-    make.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
-    make.chmod(0o755)
-    if existing_database is not None:
-        (tmp_path / existing_database).touch()
+    script = copy_script(name="build-index", directory=tmp_path)
+    if with_versions:
+        write_data_versions(tmp_path)
+    stub(directory=tmp_path, name="make", body='printf "%s\\n" "$@"')
+    for database in existing_databases:
+        (tmp_path / database).touch()
     return subprocess.run(
-        ["bash", str(script)],
+        ["bash", str(script), *presets],
         cwd=tmp_path.parent,
         env={**os.environ, "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}"},
         capture_output=True,
@@ -26,75 +86,9 @@ def run_build_index(
     )
 
 
-@pytest.mark.parametrize(
-    ("selection", "dataset", "key_column", "content_column", "region", "paths"),
-    [
-        (
-            "mhub_apr 20260825",
-            "mhub-apr-20260825",
-            "key",
-            "xml",
-            "us-east-1",
-            ["s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/20260825/"],
-        ),
-        (
-            "rdp_apr 20261005-200000",
-            "rdp-apr-20261005",
-            "id",
-            "xml",
-            "us-east-2",
-            ["s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/20261005-200000/"],
-        ),
-        (
-            "mhub_openalex_ani 20260629 073848",
-            "mhub-openalex-ani-20260629",
-            "EID",
-            "XML",
-            "us-east-1",
-            ["s3://mhub-d2m-export-parquet-prod/ANI/20260629/Ani_Eid_XML_20260629_073848.parquet"],
-        ),
-        (
-            "rdp_openalex_ani 20261005-200000",
-            "rdp-openalex-ani-20261005",
-            "id",
-            "xml",
-            "us-east-2",
-            [
-                "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/20261005-200000/"
-            ],
-        ),
-        (
-            "mhub_ani 20260825",
-            "mhub-ani-20260825",
-            "key",
-            "xml",
-            "us-east-1",
-            ["s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/20260825/"],
-        ),
-        (
-            "rdp_ani 20260928-000001 20260827-063016 20260827-063017",
-            "rdp-ani-20260928",
-            "id",
-            "xml",
-            "us-east-2",
-            [
-                "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Core/output/three_column/20260928-000001/",
-                "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Non-scopus-publication/output/three_column/20260827-063016/",
-                "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI/Preprint/output/three_column/20260827-063017/",
-            ],
-        ),
-    ],
-)
-def test_presets_build_the_correct_dataset(
-    tmp_path: Path, selection: str, dataset: str, key_column: str, content_column: str, region: str, paths: list[str]
-) -> None:
-    result = run_build_index(tmp_path=tmp_path, selection=selection)
-
-    assert result.returncode == 0, result.stderr
-    target, arguments = result.stdout.splitlines()
-    assert target == "run-build-index"
-    assert arguments.startswith("ARGS=")
-    assert shlex.split(arguments.removeprefix("ARGS=")) == [
+def expected_arguments(preset: str) -> list[str]:
+    dataset, key_column, content_column, region, paths = EXPECTED[preset]
+    return [
         "--dataset",
         dataset,
         "--db",
@@ -109,49 +103,56 @@ def test_presets_build_the_correct_dataset(
     ]
 
 
-@pytest.mark.parametrize("preset", ["mhub_apr", "rdp_apr"])
-@pytest.mark.parametrize("timestamps", [[], ["20260825", "20261005-200000"]])
-def test_apr_rejects_missing_or_extra_timestamps(tmp_path: Path, preset: str, timestamps: list[str]) -> None:
-    result = run_build_index(tmp_path=tmp_path, selection=" ".join([preset, *timestamps]))
-
-    assert result.returncode != 0
-    assert f"build-index: {preset} expects 1 timestamp, got {len(timestamps)}" in result.stderr
-    assert result.stdout == ""
+def built_arguments(stdout: str) -> list[list[str]]:
+    lines = stdout.splitlines()
+    assert lines[::2] == ["run-build-index"] * (len(lines) // 2)
+    return [shlex.split(line.removeprefix("ARGS=")) for line in lines[1::2]]
 
 
-@pytest.mark.parametrize(
-    ("preset", "arguments", "expected"),
-    [
-        ("mhub_openalex_ani", [], "2 arguments (date, time)"),
-        ("mhub_openalex_ani", ["20260629"], "2 arguments (date, time)"),
-        ("mhub_openalex_ani", ["20260629", "073848", "extra"], "2 arguments (date, time)"),
-        ("rdp_openalex_ani", [], "1 timestamp"),
-        ("rdp_openalex_ani", ["20261005-200000", "extra"], "1 timestamp"),
-    ],
-)
-def test_openalex_rejects_missing_or_extra_arguments(
-    tmp_path: Path, preset: str, arguments: list[str], expected: str
-) -> None:
-    result = run_build_index(tmp_path=tmp_path, selection=" ".join([preset, *arguments]))
+@pytest.mark.parametrize("preset", list(EXPECTED))
+def test_preset_builds_dataset_from_configured_versions(tmp_path: Path, preset: str) -> None:
+    result = run_build_index(tmp_path=tmp_path, presets=[preset])
 
-    assert result.returncode != 0
-    assert f"build-index: {preset} expects {expected}, got {len(arguments)}" in result.stderr
-    assert result.stdout == ""
+    assert result.returncode == 0, result.stderr
+    assert built_arguments(result.stdout) == [expected_arguments(preset)]
 
 
-@pytest.mark.parametrize(
-    ("selection", "database"),
-    [
-        ("mhub_apr 20260825", "mhub-apr-20260825.duckdb"),
-        ("rdp_apr 20261005-200000", "rdp-apr-20261005.duckdb"),
-        ("mhub_openalex_ani 20260629 073848", "mhub-openalex-ani-20260629.duckdb"),
-        ("rdp_openalex_ani 20261005-200000", "rdp-openalex-ani-20261005.duckdb"),
-    ],
-)
-def test_presets_preserve_existing_database(tmp_path: Path, selection: str, database: str) -> None:
-    result = run_build_index(tmp_path=tmp_path, selection=selection, existing_database=database)
+def test_multiple_presets_build_in_requested_order(tmp_path: Path) -> None:
+    result = run_build_index(tmp_path=tmp_path, presets=["rdp_apr", "mhub_ani"])
+
+    assert result.returncode == 0, result.stderr
+    assert built_arguments(result.stdout) == [expected_arguments("rdp_apr"), expected_arguments("mhub_ani")]
+
+
+def test_no_arguments_builds_every_missing_dataset(tmp_path: Path) -> None:
+    result = run_build_index(tmp_path=tmp_path, presets=[], existing_databases=["rdp-apr-20990202.duckdb"])
+
+    assert result.returncode == 0, result.stderr
+    assert built_arguments(result.stdout) == [expected_arguments(preset) for preset in EXPECTED if preset != "rdp_apr"]
+    assert "rdp-apr-20990202.duckdb already exists; skipping index build" in result.stderr
+
+
+@pytest.mark.parametrize("preset", list(EXPECTED))
+def test_existing_database_is_preserved(tmp_path: Path, preset: str) -> None:
+    database = f"{EXPECTED[preset][0]}.duckdb"
+
+    result = run_build_index(tmp_path=tmp_path, presets=[preset], existing_databases=[database])
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
     assert f"{database} already exists; skipping index build" in result.stderr
-    assert (tmp_path / database).exists()
+
+
+def test_unknown_preset_fails_before_building_anything(tmp_path: Path) -> None:
+    result = run_build_index(tmp_path=tmp_path, presets=["mhub_ani", "bogus"])
+
+    assert result.returncode != 0
+    assert "build-index: unknown preset bogus" in result.stderr
+    assert result.stdout == ""
+
+
+def test_missing_data_versions_fails(tmp_path: Path) -> None:
+    result = run_build_index(tmp_path=tmp_path, presets=["mhub_ani"], with_versions=False)
+
+    assert result.returncode != 0
+    assert result.stdout == ""

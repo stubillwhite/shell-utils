@@ -4,32 +4,6 @@
 
 set -euo pipefail
 
-## Selection                                                                {{{1
-## =============================================================================
-
-# August workshop datasets
-# BUILD=(mhub_ani 20260825)
-# BUILD=(mhub_apr 20260825)
-
-# RDP bugfix phase two with new Golden Works
-# BUILD=(rdp_ani 20261005-200000 20261005-200000 20261005-200000)
-# BUILD=(rdp_apr 20261005-200000)
-
-# OpenAlex
-# BUILD=(mhub_openalex_ani 20260629 073848)
-# BUILD=(rdp_openalex_ani 20261005-200000)
-
-# RDP bugfix phase three with fixes following Golden Works regressions
-# BUILD=(rdp_ani 20261013-000001 20261013-000001 20261013-000001)
-# BUILD=(rdp_apr 20261013-000001)
-
-# RDP bugfix phase four
-# BUILD=(rdp_ani 20261016-094451 20261016-094451 20261016-094451)
-# BUILD=(rdp_apr 20261016-094451)
-
-# RDP EKB
-BUILD=(rdp_ekb_ani 20261016-094451)
-
 ## Datasets                                                                 {{{1
 ## =============================================================================
 
@@ -37,6 +11,11 @@ die() {
     echo "build-index: $*" >&2
     exit 1
 }
+
+SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+
+# shellcheck source=data-versions
+source "${SCRIPT_DIR}/data-versions"
 
 index_args() {
     local name=$1 key_column=$2 content_column=$3 region=$4
@@ -46,64 +25,74 @@ index_args() {
     printf -- ' --path %s' "$@"
 }
 
-# MHub ANI: <timestamp>
+# MHub ANI
 mhub_ani() {
-    (($# == 1)) || die "mhub_ani expects 1 timestamp, got $#"
-    index_args "mhub-ani-${1:0:8}" key xml us-east-1 \
-        "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/${1}/"
+    index_args "mhub-ani-${MHUB_VERSION:0:8}" key xml us-east-1 \
+        "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/${MHUB_VERSION}/"
 }
 
-# RDP ANI: <core> <non-scopus-publication> <preprint> timestamps
 rdp_ani() {
-    (($# == 3)) || die "rdp_ani expects 3 timestamps (core, non-scopus, preprint), got $#"
     local root=s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI
-    index_args "rdp-ani-${1:0:8}" id xml us-east-2 \
-        "${root}/Core/output/three_column/${1}/" \
-        "${root}/Non-scopus-publication/output/three_column/${2}/" \
-        "${root}/Preprint/output/three_column/${3}/"
+    index_args "rdp-ani-${RDP_VERSION:0:8}" id xml us-east-2 \
+        "${root}/Core/output/three_column/${RDP_VERSION}/" \
+        "${root}/Non-scopus-publication/output/three_column/${RDP_VERSION}/" \
+        "${root}/Preprint/output/three_column/${RDP_VERSION}/"
 }
 
 mhub_apr() {
-    (($# == 1)) || die "mhub_apr expects 1 timestamp, got $#"
-    index_args "mhub-apr-${1:0:8}" key xml us-east-1 \
-        "s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/${1}/"
+    index_args "mhub-apr-${MHUB_VERSION:0:8}" key xml us-east-1 \
+        "s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/${MHUB_VERSION}/"
 }
 
 rdp_apr() {
-    (($# == 1)) || die "rdp_apr expects 1 timestamp, got $#"
-    index_args "rdp-apr-${1:0:8}" id xml us-east-2 \
-        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${1}/"
+    index_args "rdp-apr-${RDP_VERSION:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${RDP_VERSION}/"
 }
 
+# MHub OpenAlex ANI: MHUB_OPENALEX_VERSION is <date>-<time>
 mhub_openalex_ani() {
-    (($# == 2)) || die "mhub_openalex_ani expects 2 arguments (date, time), got $#"
-    index_args "mhub-openalex-ani-${1}" EID XML us-east-1 \
-        "s3://mhub-d2m-export-parquet-prod/ANI/${1}/Ani_Eid_XML_${1}_${2}.parquet"
+    local date=${MHUB_OPENALEX_VERSION%-*} time=${MHUB_OPENALEX_VERSION#*-}
+    index_args "mhub-openalex-ani-${date}" EID XML us-east-1 \
+        "s3://mhub-d2m-export-parquet-prod/ANI/${date}/Ani_Eid_XML_${date}_${time}.parquet"
 }
 
 rdp_openalex_ani() {
-    (($# == 1)) || die "rdp_openalex_ani expects 1 timestamp, got $#"
-    index_args "rdp-openalex-ani-${1:0:8}" id xml us-east-2 \
-        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/${1}/"
+    index_args "rdp-openalex-ani-${RDP_OPENALEX_VERSION:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/${RDP_OPENALEX_VERSION}/"
 }
 
 rdp_ekb_ani() {
-    (($# == 1)) || die "rdp_ekb_ani expects 1 timestamp, got $#"
-    index_args "rdp-ekb-ani-${1:0:8}" id xml us-east-2 \
-        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/ekb/ANI/Core/output/three_column/${1}/"
+    index_args "rdp-ekb-ani-${RDP_EKB_VERSION:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/ekb/ANI/Core/output/three_column/${RDP_EKB_VERSION}/"
 }
+
+PRESETS=(mhub_ani rdp_ani mhub_apr rdp_apr mhub_openalex_ani rdp_openalex_ani rdp_ekb_ani)
 
 ## Script                                                                   {{{1
 ## =============================================================================
 
-ARGS=$("${BUILD[@]}")
-DATABASE=${ARGS#*--db }
-DATABASE=${DATABASE%% *}
+build() {
+    local args database
+    args=$("$1")
+    database=${args#*--db }
+    database=${database%% *}
+    if [[ -e "${database}" ]]; then
+        echo "build-index: ${database} already exists; skipping index build" >&2
+    else
+        make run-build-index ARGS="${args}"
+    fi
+}
 
-SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
-cd "${SCRIPT_DIR}"
-if [[ -e "${DATABASE}" ]]; then
-    echo "build-index: ${DATABASE} already exists; skipping index build" >&2
+if (($# > 0)); then
+    SELECTED=("$@")
 else
-    make run-build-index ARGS="${ARGS}"
+    SELECTED=("${PRESETS[@]}")
 fi
+for preset in "${SELECTED[@]}"; do
+    [[ " ${PRESETS[*]} " == *" ${preset} "* ]] || die "unknown preset ${preset} (expected one of: ${PRESETS[*]})"
+done
+
+cd "${SCRIPT_DIR}"
+for preset in "${SELECTED[@]}"; do
+    build "${preset}"
+done

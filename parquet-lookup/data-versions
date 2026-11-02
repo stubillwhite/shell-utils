@@ -1,0 +1,7 @@
+# Data versions used by all parquet-lookup tools and core-complete-compare.
+# Index names use the first eight characters (the date) of each version.
+MHUB_VERSION=20260825
+RDP_VERSION=20261016-094451
+MHUB_OPENALEX_VERSION=20260629-073848
+RDP_OPENALEX_VERSION=20261005-200000
+RDP_EKB_VERSION=20261016-094451

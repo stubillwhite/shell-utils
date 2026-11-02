@@ -39,4 +39,5 @@ There is no framework or layered architecture. Keep the IO boundaries testable t
 - Type checking is done with `dmypy` across `src` and `tests`.
 - A build accepts exactly one `--dataset NAME` and one or more `--path PATH` values (local paths and S3 URIs may be mixed); it replaces that named dataset across all supplied paths. Other datasets remain intact and failures must preserve the previous index.
 - Parquet column names default to `key` and `xml_content`; `--key-column` and `--content-column` override them per dataset and are persisted for lookups.
+- MHub/RDP data versions live only in `data-versions`, which the helper scripts and the `core-complete-compare` zsh function source. Never hardcode a version in a script; derive index names as `<prefix>-${VERSION:0:8}`.
 - AWS credentials use PyArrow’s standard credential resolution; do not add credentials to project configuration.

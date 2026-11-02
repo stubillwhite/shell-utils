@@ -2,9 +2,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+# shellcheck source=data-versions
+source "${SCRIPT_DIR}/data-versions"
+
 ANI_DATASETS=(
-    mhub-ani-20260825
-    rdp-ani-20261016
+    "mhub-ani-${MHUB_VERSION:0:8}"
+    "rdp-ani-${RDP_VERSION:0:8}"
 )
 
 ANI_IDS=(
@@ -111,9 +115,8 @@ ANI_IDS=(
 )
 
 APR_DATASETS=(
-    mhub-apr-20260825
-    rdp-apr-20260827
-    rdp-apr-20261005
+    "mhub-apr-${MHUB_VERSION:0:8}"
+    "rdp-apr-${RDP_VERSION:0:8}"
 )
 
 APR_IDS=(
@@ -144,8 +147,8 @@ APR_IDS=(
 )
 
 OPENALEX_DATASETS=(
-    mhub-openalex-ani-20260629
-    rdp-openalex-ani-20261005
+    "mhub-openalex-ani-${MHUB_OPENALEX_VERSION:0:8}"
+    "rdp-openalex-ani-${RDP_OPENALEX_VERSION:0:8}"
 )
 
 OPENALEX_IDS=(
@@ -179,7 +182,7 @@ OPENALEX_IDS=(
 )
 
 EKB_DATASETS=(
-    rdp-ekb-ani-20261016
+    "rdp-ekb-ani-${RDP_EKB_VERSION:0:8}"
 )
 
 EKB_IDS=(
