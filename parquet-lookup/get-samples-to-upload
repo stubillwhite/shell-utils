@@ -1,27 +1,123 @@
-#!/usr/bin/env bash
+#!/usr/bin/env zsh
 
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
-    echo "Usage: $0 DATASET SAMPLE_ID" >&2
+    echo "Usage: $0 DATASET SAMPLE_ID_OR_FILE" >&2
     exit 1
 fi
 
 dataset=$1
-id=$2
+input=$2
+
+SCRIPT_DIR=${0:A:h}
+source "${SCRIPT_DIR}/data-versions"
+
+case "$dataset" in
+    ani|apr)
+        sources=("mhub-${dataset}-${MHUB_VERSION:0:8}" "rdp-${dataset}-${RDP_VERSION:0:8}") ;;
+    openalex-ani)
+        sources=("mhub-openalex-ani-${MHUB_OPENALEX_VERSION:0:8}" "rdp-openalex-ani-${RDP_OPENALEX_VERSION:0:8}") ;;
+    *)
+        echo "Unknown dataset: $dataset (expected ani, apr, or openalex-ani)" >&2
+        exit 1 ;;
+esac
+
+collect_samples() {
+    local id=$1
+    find . -type f -name "${id}*" -print0 \
+        | while IFS= read -r -d '' f; do
+            sourceDirectory=$(basename "$(dirname "${f}")")
+            case "${sourceDirectory}" in
+                *-"${dataset}"-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+                *) continue ;;
+            esac
+            outputFilename=${sourceDirectory%-*}-$(basename "${f}")
+            [[ -s "$f" ]] || continue
+            cp "$f" "./upload/${outputFilename}" || return 1
+        done
+}
+
+if [[ -f "$input" && ! -r "$input" ]]; then
+    echo "Cannot read ID file: $input" >&2
+    exit 1
+fi
+
+ids=()
+if [[ -f "$input" ]]; then
+    while IFS= read -r id || [[ -n "$id" ]]; do
+        id=${id%$'\r'}
+        [[ -n "$id" ]] || continue
+        ids+=("$id")
+    done < "$input"
+else
+    ids+=("$input")
+fi
+
+missing=()
+for id in "${ids[@]}"; do
+    [[ -n "$id" ]] || continue
+    if [[ "$id" == */* ]]; then
+        echo "Invalid sample ID: $id (must not contain /)" >&2
+        exit 1
+    fi
+    for sourceDataset in "${sources[@]}"; do
+        [[ -s "./example-data/${sourceDataset}/${id}.xml" ]] && continue
+        missing+=("$sourceDataset" "$id")
+    done
+done
+
+result=0
+if (( ${#missing[@]} )); then
+    if ! AWS_PAGER="" aws sts get-caller-identity > /dev/null; then
+        echo "ERROR: AWS credentials are unavailable or invalid; configure credentials before retrying" >&2
+        exit 1
+    fi
+    mkdir -p ./example-data
+    temporaryPath=$(mktemp -d "./example-data/.upload.XXXXXX")
+    trap 'rm -f "${temporaryPath}/raw.xml" "${temporaryPath}/formatted.xml"; rmdir "${temporaryPath}"' EXIT
+
+    set -- "${missing[@]}"
+    while (( $# )); do
+        sourceDataset=$1
+        id=$2
+        shift 2
+        outputDirectory="./example-data/${sourceDataset}"
+        outputFile="${outputDirectory}/${id}.xml"
+        [[ -s "$outputFile" ]] && continue
+        if ! mkdir -p "$outputDirectory" || ! rm -f "$outputFile"; then
+            echo "ERROR: Cannot prepare record ${id} from ${sourceDataset}" >&2
+            result=1
+            continue
+        fi
+        echo "Downloading record ${id} from ${sourceDataset}" >&2
+        if ! "${SCRIPT_DIR}/query-dataset" "$sourceDataset" "$id" > "${temporaryPath}/raw.xml"; then
+            echo "ERROR: Failed to download record ${id} from ${sourceDataset}" >&2
+            result=1
+            continue
+        fi
+        if [[ ! -s "${temporaryPath}/raw.xml" ]]; then
+            echo "ERROR: Empty record ${id} from ${sourceDataset}" >&2
+            result=1
+            continue
+        fi
+        if ! xmllint --format "${temporaryPath}/raw.xml" > "${temporaryPath}/formatted.xml"; then
+            echo "ERROR: Invalid XML for record ${id} from ${sourceDataset}" >&2
+            result=1
+            continue
+        fi
+        if ! mv "${temporaryPath}/formatted.xml" "$outputFile"; then
+            echo "ERROR: Cannot save record ${id} from ${sourceDataset}" >&2
+            result=1
+        fi
+    done
+fi
 
 mkdir -p ./upload
-rm -f ./upload/*.xml
-
-find . -type f -name "${id}*" -print0 \
-    | while IFS= read -r -d '' f; do
-        sourceDirectory=$(basename "$(dirname "${f}")")
-        case "${sourceDirectory}" in
-            *-"${dataset}"-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
-            *) continue ;;
-        esac
-        outputFilename=${sourceDirectory%-*}-$(basename "${f}")
-        cp "$f" "./upload/${outputFilename}"
-    done
-
-open ./upload
+rm -f ./upload/*.xml(N)
+for id in "${ids[@]}"; do
+    [[ -n "$id" ]] || continue
+    collect_samples "$id" || result=1
+done
+open ./upload || result=1
+exit "$result"

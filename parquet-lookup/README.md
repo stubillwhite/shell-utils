@@ -99,3 +99,29 @@ Run `./download-example-data` from this directory after building the selected in
 `example-data/<dataset>/` directories for ANI, APR, and OpenAlex ANI, downloads and formats the configured XML
 records, and skips existing nonempty files. Dataset names come from `data-versions` and use only the date, even
 when the indexed S3 prefix contains a full timestamp (for example, `rdp-apr-20261016` for `20261016-094451`).
+
+## Collect samples for upload ##
+
+```shell
+./get-samples-to-upload ani 0013885228
+./get-samples-to-upload openalex-ani ./ids.txt
+```
+
+Pass a single ID or an existing file containing one ID per line. Blank lines are ignored; Windows line endings
+and a final line without a newline are supported. IDs must not contain `/`.
+
+The script ensures the exact ID's XML is cached in `./example-data/<source>/<ID>.xml` for the current MHub/RDP
+source pair: ANI for `ani`, APR for `apr`, or OpenAlex ANI for `openalex-ani`. Source versions come from
+`data-versions`. Missing or empty files are downloaded even if older versions or ID-prefix matches exist.
+Nonempty cached files are reused.
+
+Downloads require existing source indexes (build the relevant presets with `./build-index` first), the lookup
+dependencies, `xmllint`, zsh, and the AWS CLI on PATH. Configure AWS credentials before running the script.
+When downloads are needed, it validates existing credentials once with `aws sts get-caller-identity`.
+If validation fails, it reports an error and exits before downloading or changing upload contents.
+The script does not log in or load shell configuration. Fully cached requests do not check AWS credentials.
+
+The script clears `./upload/*.xml` once, collects nonempty local ID-prefix matches from all matching dated
+folders, and opens `./upload` once. This includes additional local sources and newly downloaded records.
+Download/query/XML failures are reported while remaining records continue; available samples are still collected
+and opened, but the command exits nonzero. Empty input lists perform no downloads.
