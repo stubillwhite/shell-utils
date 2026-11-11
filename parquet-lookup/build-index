@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-## Datasets                                                                 {{{1
+## Helpers                                                                  {{{1
 ## =============================================================================
 
 die() {
@@ -25,7 +25,12 @@ index_args() {
     printf -- ' --path %s' "$@"
 }
 
-# MHub ANI
+## Scopus                                                                   {{{1
+## =============================================================================
+
+## ANI                              {{{2
+## =====================================
+
 mhub_ani() {
     index_args "mhub-ani-${MHUB_VERSION:0:8}" key xml us-east-1 \
         "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/${MHUB_VERSION}/"
@@ -39,6 +44,9 @@ rdp_ani() {
         "${root}/Preprint/output/three_column/${RDP_VERSION}/"
 }
 
+## APR                              {{{2
+## =====================================
+
 mhub_apr() {
     index_args "mhub-apr-${MHUB_VERSION:0:8}" key xml us-east-1 \
         "s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/${MHUB_VERSION}/"
@@ -48,6 +56,38 @@ rdp_apr() {
     index_args "rdp-apr-${RDP_VERSION:0:8}" id xml us-east-2 \
         "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/APR/output/three_column/${RDP_VERSION}/"
 }
+
+## IHR                              {{{2
+## =====================================
+
+mhub_ihr() {
+    index_args "mhub-ihr-${MHUB_VERSION:0:8}" key xml us-east-1 \
+        "s3://sccontent-staging-corecomplete-xocs/sccontent-ih-parquet-prod/${MHUB_VERSION}/"
+}
+
+rdp_ihr() {
+    index_args "rdp-ihr-${RDP_VERSION:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/IHR/output/three_column/${RDP_VERSION}/"
+}
+
+## IPR                              {{{2
+## =====================================
+
+mhub_ipr() {
+    index_args "mhub-ipr-${MHUB_VERSION:0:8}" key xml us-east-1 \
+        "s3://sccontent-staging-corecomplete-xocs/sccontent-ipr-parquet-prod/${MHUB_VERSION}/"
+}
+
+rdp_ipr() {
+    index_args "rdp-ipr-${RDP_VERSION:0:8}" id xml us-east-2 \
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ipr/output/three_column/${RDP_VERSION}/"
+}
+
+## OpenAlex                                                                 {{{1
+## =============================================================================
+
+## ANI                              {{{2
+## =====================================
 
 # MHub OpenAlex ANI: MHUB_OPENALEX_VERSION is <date>-<time>
 mhub_openalex_ani() {
@@ -61,12 +101,17 @@ rdp_openalex_ani() {
         "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/openalex/ANI/Core/output/three_column/${RDP_OPENALEX_VERSION}/"
 }
 
-rdp_ekb_ani() {
-    index_args "rdp-ekb-ani-${RDP_EKB_VERSION:0:8}" id xml us-east-2 \
-        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/ekb/ANI/Core/output/three_column/${RDP_EKB_VERSION}/"
-}
-
-PRESETS=(mhub_ani rdp_ani mhub_apr rdp_apr mhub_openalex_ani rdp_openalex_ani rdp_ekb_ani)
+PRESETS=(
+    mhub_ani
+    mhub_apr
+    mhub_ihr
+    mhub_ipr
+    rdp_ani
+    rdp_apr
+    rdp_ihr
+    mhub_openalex_ani
+    rdp_openalex_ani
+)
 
 ## Script                                                                   {{{1
 ## =============================================================================

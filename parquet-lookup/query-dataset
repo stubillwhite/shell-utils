@@ -6,26 +6,29 @@ dataset=$1
 key=$2
 
 case "${dataset}" in
-    rdp-ani|rdp-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
-        region=us-east-2 ;;
-
-    rdp-ekb-ani|rdp-ekb-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
-        region=us-east-2 ;;
-
     mhub-ani|mhub-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-1 ;;
 
-    rdp-apr|rdp-apr-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+    rdp-ani|rdp-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-2 ;;
 
     mhub-apr|mhub-apr-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-1 ;;
 
-    rdp-openalex-ani|rdp-openalex-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+    rdp-apr|rdp-apr-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        region=us-east-2 ;;
+
+    mhub-ihr|mhub-ihr-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        region=us-east-1 ;;
+
+    rdp-ihr|rdp-ihr-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-2 ;;
 
     mhub-openalex-ani|mhub-openalex-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
         region=us-east-1 ;;
+
+    rdp-openalex-ani|rdp-openalex-ani-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+        region=us-east-2 ;;
 
     *)
         echo "Unknown dataset ${dataset}"
