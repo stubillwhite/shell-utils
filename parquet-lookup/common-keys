@@ -6,10 +6,10 @@ SCRIPT_DIR=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 # shellcheck source=data-versions
 source "${SCRIPT_DIR}/data-versions"
 
-DATASET=ihr
+DATASET=openalex-ani
 
-mhub="mhub-${DATASET}-${MHUB_VERSION:0:8}.duckdb"
-rdp="rdp-${DATASET}-${RDP_VERSION:0:8}.duckdb"
+mhub="mhub-${DATASET}-${MHUB_OPENALEX_VERSION:0:8}.duckdb"
+rdp="rdp-${DATASET}-${RDP_OPENALEX_VERSION:0:8}.duckdb"
 
 echo "Finding common keys in ${mhub} and ${rdp}"
 
@@ -21,3 +21,19 @@ select distinct
 from mhub.key_index m inner join rdp.key_index r on m.key = r.key 
 limit 25;
 "
+
+# duckdb --ascii -c "
+# attach '${mhub}' as mhub;
+# select distinct 
+#     m.key 
+# from mhub.key_index m 
+# limit 25;
+# "
+
+# duckdb --ascii -c "
+# attach '${rdp}' as rdp;
+# select distinct 
+#     r.key 
+# from rdp.key_index r
+# limit 25;
+# "

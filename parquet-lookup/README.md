@@ -31,11 +31,15 @@ RDP_VERSION=20261016-094451
 MHUB_OPENALEX_VERSION=20260629-073848
 RDP_OPENALEX_VERSION=20261005-200000
 RDP_EKB_VERSION=20261016-094451
+MHUB_ANI_NON_CORE_VERSION=20260824
+RDP_ANI_NON_CORE_VERSION=20261016-094451
 ```
 
 To move every tool to a new data drop, edit these values and run `./build-index`. The full value selects the S3
 prefix, while its first eight characters (the date) determine dataset and database names, for example
 `rdp-ani-20261016.duckdb`. RDP ANI Core, Non-scopus-publication and Preprint all use `RDP_VERSION`.
+RDP ANI non-core indexes the separate Dummy output using `RDP_ANI_NON_CORE_VERSION`.
+MHub ANI non-core uses `s3://sccontent-staging-corecomplete-xocs/sccontent-anidummy-parquet-prod/` with `MHUB_ANI_NON_CORE_VERSION`.
 `MHUB_OPENALEX_VERSION` is `<date>-<time>` and selects the single file
 `s3://mhub-d2m-export-parquet-prod/ANI/<date>/Ani_Eid_XML_<date>_<time>.parquet`.
 
@@ -48,10 +52,23 @@ prefix, while its first eight characters (the date) determine dataset and databa
 ./build-index rdp_ani rdp_apr
 ```
 
+List the current S3 paths for sharing, without building indexes or accessing AWS:
+
+```bash
+./build-index --list-paths
+./build-index --list-paths rdp_ani mhub_openalex_ani
+./build-index --list-paths > s3-paths.txt
+```
+
+Output is one labeled path per line (for example, `MHub ANI: s3://...`), using the current `data-versions` values.
+With no preset names, it lists every configured build preset, including paths whose local index already exists.
+
 | Preset              | Version                 | Columns       | Region      |
 |---------------------|-------------------------|---------------|-------------|
 | `mhub_ani`          | `MHUB_VERSION`          | `key` / `xml` | `us-east-1` |
+| `mhub_ani_non_core` | `MHUB_ANI_NON_CORE_VERSION` | `key` / `xml` | `us-east-1` |
 | `rdp_ani`           | `RDP_VERSION`           | `id` / `xml`  | `us-east-2` |
+| `rdp_ani_non_core`  | `RDP_ANI_NON_CORE_VERSION` | `id` / `xml`  | `us-east-2` |
 | `mhub_apr`          | `MHUB_VERSION`          | `key` / `xml` | `us-east-1` |
 | `rdp_apr`           | `RDP_VERSION`           | `id` / `xml`  | `us-east-2` |
 | `mhub_openalex_ani` | `MHUB_OPENALEX_VERSION` | `EID` / `XML` | `us-east-1` |

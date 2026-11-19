@@ -20,6 +20,16 @@ source "${SCRIPT_DIR}/data-versions"
 index_args() {
     local name=$1 key_column=$2 content_column=$3 region=$4
     shift 4
+    if [[ "${LIST_PATHS}" == true ]]; then
+        local label=${name%-*} path
+        label=$(printf '%s' "${label//-/ }" | tr '[:lower:]' '[:upper:]')
+        label=${label/MHUB/MHub}
+        label=${label/OPENALEX/OpenAlex}
+        for path in "$@"; do
+            printf '%s: %s\n' "${label}" "${path}"
+        done
+        return
+    fi
     printf -- '--dataset %s --db %s.duckdb --key-column %s --content-column %s --region %s' \
         "${name}" "${name}" "${key_column}" "${content_column}" "${region}"
     printf -- ' --path %s' "$@"
@@ -36,12 +46,23 @@ mhub_ani() {
         "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/${MHUB_VERSION}/"
 }
 
+mhub_ani_non_core() {
+    index_args "mhub-ani-non-core-${MHUB_ANI_NON_CORE_VERSION:0:8}" key xml us-east-1 \
+        "s3://sccontent-staging-corecomplete-xocs/sccontent-anidummy-parquet-prod/${MHUB_ANI_NON_CORE_VERSION}/"
+}
+
 rdp_ani() {
     local root=s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI
     index_args "rdp-ani-${RDP_VERSION:0:8}" id xml us-east-2 \
         "${root}/Core/output/three_column/${RDP_VERSION}/" \
         "${root}/Non-scopus-publication/output/three_column/${RDP_VERSION}/" \
         "${root}/Preprint/output/three_column/${RDP_VERSION}/"
+}
+
+rdp_ani_non_core() {
+    local root=s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ANI
+    index_args "rdp-ani-non-core-${RDP_ANI_NON_CORE_VERSION:0:8}" id xml us-east-2 \
+        "${root}/Dummy/output/three_column/${RDP_ANI_NON_CORE_VERSION}/"
 }
 
 ## APR                              {{{2
@@ -93,7 +114,7 @@ rdp_ipr() {
 mhub_openalex_ani() {
     local date=${MHUB_OPENALEX_VERSION%-*} time=${MHUB_OPENALEX_VERSION#*-}
     index_args "mhub-openalex-ani-${date}" EID XML us-east-1 \
-        "s3://mhub-d2m-export-parquet-prod/ANI/${date}/Ani_Eid_XML_${date}_${time}.parquet"
+        "s3://mhub-d2m-export-parquet-prod/ANI/${date}/"
 }
 
 rdp_openalex_ani() {
@@ -103,10 +124,12 @@ rdp_openalex_ani() {
 
 PRESETS=(
     mhub_ani
+    mhub_ani_non_core
     mhub_apr
     mhub_ihr
     mhub_ipr
     rdp_ani
+    rdp_ani_non_core
     rdp_apr
     rdp_ihr
     mhub_openalex_ani
@@ -128,6 +151,12 @@ build() {
     fi
 }
 
+LIST_PATHS=false
+if [[ "${1:-}" == --list-paths ]]; then
+    LIST_PATHS=true
+    shift
+fi
+
 if (($# > 0)); then
     SELECTED=("$@")
 else
@@ -139,5 +168,9 @@ done
 
 cd "${SCRIPT_DIR}"
 for preset in "${SELECTED[@]}"; do
-    build "${preset}"
+    if [[ "${LIST_PATHS}" == true ]]; then
+        "${preset}"
+    else
+        build "${preset}"
+    fi
 done
