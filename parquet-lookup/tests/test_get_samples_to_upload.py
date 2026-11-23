@@ -136,6 +136,7 @@ def test_empty_id_list_does_not_collect_every_sample(tmp_path: Path, contents: s
         ("ani", ["mhub-ani-20990101", "rdp-ani-20990202"]),
         ("apr", ["mhub-apr-20990101", "rdp-apr-20990202"]),
         ("openalex-ani", ["mhub-openalex-ani-20990303", "rdp-openalex-ani-20990404"]),
+        ("ani-non-core", ["mhub-ani-non-core-20990606", "rdp-ani-non-core-20990707"]),
     ],
 )
 def test_downloads_current_source_pair_and_publishes_formatted_xml(

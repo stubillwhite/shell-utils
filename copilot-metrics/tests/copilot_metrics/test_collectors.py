@@ -210,6 +210,19 @@ def test_claude_file_history_metadata_is_not_an_unsupported_transcript(tmp_path)
     assert sum(item.input_tokens for item in result.events if item.kind == "usage") == 10
 
 
+def test_claude_file_history_delta_metadata_is_not_an_unsupported_transcript(tmp_path):
+    delta = {
+        "type": "file-history-delta",
+        "messageId": "m",
+        "snapshotMessageId": "s",
+        "trackingPath": "file.py",
+        "backup": {"backupFileName": "b@v1", "version": 1},
+        "timestamp": "2026-01-01T10:00:00Z",
+    }
+    path = write_records(tmp_path, [delta])
+    assert collect("claude", path).diagnostics == ()
+
+
 @pytest.mark.parametrize("provider", ["copilot", "claude", "codex"])
 def test_projects_use_recorded_cwd_without_persisting_full_paths(tmp_path, provider):
     cwd = "/private/work/customer/app"

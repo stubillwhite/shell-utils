@@ -13,7 +13,7 @@ from copilot_metrics.models import (
     Metric,
 )
 
-COLLECTOR_REVISION = "3"
+COLLECTOR_REVISION = "4"
 
 
 def object_value(value: object) -> dict[str, Any]:
@@ -60,7 +60,10 @@ def collect(provider: str, path: Path) -> Collection:
             diagnostics.append(Diagnostic(number, "unsupported_schema"))
             continue
         kind = record.get("type")
-        if provider == "claude" and kind == "file-history-snapshot" and isinstance(record.get("snapshot"), dict):
+        if provider == "claude" and (
+            (kind == "file-history-snapshot" and isinstance(record.get("snapshot"), dict))
+            or (kind == "file-history-delta" and isinstance(record.get("backup"), dict))
+        ):
             ignored_metadata = True
             continue
         data = object_value(record.get("data"))

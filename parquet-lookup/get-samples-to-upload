@@ -18,8 +18,10 @@ case "$dataset" in
         sources=("mhub-${dataset}-${MHUB_VERSION:0:8}" "rdp-${dataset}-${RDP_VERSION:0:8}") ;;
     openalex-ani)
         sources=("mhub-openalex-ani-${MHUB_OPENALEX_VERSION:0:8}" "rdp-openalex-ani-${RDP_OPENALEX_VERSION:0:8}") ;;
+    ani-non-core)
+        sources=("mhub-ani-non-core-${MHUB_ANI_NON_CORE_VERSION:0:8}" "rdp-ani-non-core-${RDP_ANI_NON_CORE_VERSION:0:8}") ;;
     *)
-        echo "Unknown dataset: $dataset (expected ani, apr, or openalex-ani)" >&2
+        echo "Unknown dataset: $dataset (expected ani, apr, openalex-ani, or ani-non-core)" >&2
         exit 1 ;;
 esac
 

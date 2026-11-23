@@ -122,6 +122,7 @@ when the indexed S3 prefix contains a full timestamp (for example, `rdp-apr-2026
 ```shell
 ./get-samples-to-upload ani 0013885228
 ./get-samples-to-upload openalex-ani ./ids.txt
+./get-samples-to-upload ani-non-core 0013885228
 ```
 
 Pass a single ID or an existing file containing one ID per line. Blank lines are ignored; Windows line endings

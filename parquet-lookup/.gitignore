@@ -12,3 +12,5 @@ example-data/
 .DS_Store
 
 *.duckdb
+
+upload/
