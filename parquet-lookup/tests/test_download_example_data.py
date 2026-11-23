@@ -82,6 +82,8 @@ def test_download_reports_failure_after_attempting_remaining_records(tmp_path: P
         ("rdp-openalex-ani-20261005", "us-east-2"),
         ("rdp-ekb-ani", "us-east-2"),
         ("rdp-ekb-ani-20261016", "us-east-2"),
+        ("mhub-ani-non-core-20260824", "us-east-1"),
+        ("rdp-ani-non-core-20261016", "us-east-2"),
     ],
 )
 def test_query_dataset_uses_dataset_region(tmp_path: Path, dataset: str, region: str) -> None:
