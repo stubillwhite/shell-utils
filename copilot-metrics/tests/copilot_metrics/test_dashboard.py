@@ -7,6 +7,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from copilot_metrics.storage import Store
+from tests.copilot_metrics.dashboard_harness import dashboard_app
 from tests.copilot_metrics.test_collectors import event, write_records
 from tests.copilot_metrics.test_dashboard_data import (
     attention_database,
@@ -14,16 +15,9 @@ from tests.copilot_metrics.test_dashboard_data import (
 )
 
 
-def dashboard_app(database):
-    from pathlib import Path
-
-    from copilot_metrics.dashboard import show_dashboard
-
-    show_dashboard(Path(database))
-
-
-def start(database):
-    return AppTest.from_function(dashboard_app, args=(str(database),), default_timeout=15).run()
+def start(database, prices=None):
+    prices_path = prices or database.parent / "prices.toml"
+    return AppTest.from_function(dashboard_app, args=(str(database), str(prices_path)), default_timeout=15).run()
 
 
 def test_dashboard_views_filters_and_refresh_preserve_read_only_evidence(dashboard_database, tmp_path):
@@ -34,6 +28,7 @@ def test_dashboard_views_filters_and_refresh_preserve_read_only_evidence(dashboa
         "Overview",
         "Attention signals",
         "Models & Projects",
+        "Work patterns",
         "Sessions",
         "Data Quality",
     ]
@@ -222,3 +217,105 @@ def test_attention_filtered_empty_states(attention_database):
     app.sidebar.date_input(key="end").set_value("2027-01-01").run()
     assert not app.exception
     assert any("No recorded sessions" in item.value for item in app.tabs[1].info)
+
+
+def work_pattern_database(tmp_path):
+    database = tmp_path / "work.duckdb"
+    records = [
+        event("session.start", {"sessionId": "s"}),
+        event("tool.execution_start", {"toolName": "bash", "toolCallId": "a"}, "start"),
+        event("tool.execution_complete", {"toolCallId": "a", "success": False}, "done"),
+        event(
+            "session.usage_record",
+            {
+                "usage": {
+                    "apiCallId": "u",
+                    "model": "m",
+                    "inputTokens": 1_000_000,
+                    "outputTokens": 0,
+                    "cacheReadTokens": 0,
+                    "cacheWriteTokens": 0,
+                }
+            },
+            "usage",
+        ),
+    ]
+    with Store(database) as store:
+        store.import_file("copilot", write_records(tmp_path, records))
+    return database
+
+
+def frame_with(app, column):
+    return next(frame.value for frame in app.dataframe if column in frame.value)
+
+
+def test_work_patterns_tab_shows_tool_errors_and_leaves_cost_unavailable_without_prices(tmp_path):
+    app = start(work_pattern_database(tmp_path))
+    assert not app.exception
+    tools = frame_with(app, "error_rate")
+    assert list(tools["tool"]) == ["bash"] and list(tools["error_rate"]) == [1.0]
+    assert frame_with(app, "estimated_cost_usd")["estimated_cost_usd"].isna().all()
+    assert any("estimate" in caption.value.lower() for caption in app.caption)
+
+
+def test_work_patterns_tab_prices_usage_from_the_prices_file_and_downloads_match(tmp_path):
+    database = work_pattern_database(tmp_path)
+    prices = tmp_path / "custom-prices.toml"
+    prices.write_text('[models."m"]\ninput = 3.0\noutput = 0.0\ncache_read = 0.0\ncache_write = 0.0\n')
+    app = start(database, prices)
+    assert not app.exception
+    assert list(frame_with(app, "estimated_cost_usd")["estimated_cost_usd"]) == [3.0]
+    assert {button.proto.label for button in app.get("download_button")} >= {
+        "Download tool profile CSV",
+        "Download estimated cost JSON",
+    }
+
+
+def test_invalid_prices_file_is_reported_without_hiding_other_tabs(tmp_path):
+    database = work_pattern_database(tmp_path)
+    prices = tmp_path / "bad.toml"
+    prices.write_text('[models."m"]\ninput = -1\n')
+    app = start(database, prices)
+    assert not app.exception
+    assert any("prices" in error.value.lower() for error in app.error)
+    assert frame_with(app, "error_rate") is not None
+
+
+def priced_app(tmp_path):
+    prices = tmp_path / "custom-prices.toml"
+    prices.write_text('[models."m"]\ninput = 3.0\noutput = 0.0\ncache_read = 0.0\ncache_write = 0.0\n')
+    return start(work_pattern_database(tmp_path), prices)
+
+
+def test_overview_headline_total_is_unavailable_without_prices_and_a_dollar_amount_with_them(tmp_path):
+    unpriced = start(work_pattern_database(tmp_path))
+    assert any(metric.label == "Estimated cost (USD)" and metric.value == "Unavailable" for metric in unpriced.metric)
+    priced = priced_app(tmp_path)
+    assert not priced.exception
+    assert any(metric.label == "Estimated cost (USD)" and metric.value == "$3.00" for metric in priced.metric)
+
+
+def test_headline_total_says_when_some_usage_could_not_be_priced(tmp_path):
+    database = tmp_path / "partial.duckdb"
+    usage = {"inputTokens": 1_000_000, "outputTokens": 0, "cacheReadTokens": 0, "cacheWriteTokens": 0}
+    records = [
+        event("session.start", {"sessionId": "s"}),
+        event("session.usage_record", {"usage": {"apiCallId": "a", "model": "m", **usage}}, "a"),
+        event("session.usage_record", {"usage": {"apiCallId": "b", "model": "mystery", **usage}}, "b"),
+    ]
+    with Store(database) as store:
+        store.import_file("copilot", write_records(tmp_path, records))
+    prices = tmp_path / "prices.toml"
+    prices.write_text('[models."m"]\ninput = 3.0\noutput = 0.0\ncache_read = 0.0\ncache_write = 0.0\n')
+    app = start(database, prices)
+    assert any("lower bound" in caption.value.lower() and "mystery" in caption.value for caption in app.caption)
+
+
+def test_daily_cost_chart_plots_priced_days_and_cost_by_project_has_downloads(tmp_path, monkeypatch):
+    charts = Mock(wraps=st.altair_chart)
+    monkeypatch.setattr("copilot_metrics.dashboard.st.altair_chart", charts)
+    app = priced_app(tmp_path)
+    assert not app.exception
+    assert any('"estimated_cost_usd"' in json.dumps(call.args[0].to_dict()) for call in charts.call_args_list)
+    labels = {button.proto.label for button in app.get("download_button")}
+    assert {"Download cost by project CSV", "Download cost by project JSON"} <= labels

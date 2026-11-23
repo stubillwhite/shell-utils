@@ -1,7 +1,17 @@
 from pathlib import Path
 from typing import Any
 
+from copilot_metrics.insights import (
+    cache_efficiency,
+    cost_by_day,
+    cost_by_model,
+    cost_by_project,
+    cost_total,
+    project_friction,
+    tool_profile,
+)
 from copilot_metrics.models import TOKEN_FIELDS
+from copilot_metrics.prices import Prices
 from copilot_metrics.reports import COUNT_KINDS, report
 from copilot_metrics.storage import Store
 
@@ -59,6 +69,28 @@ def load_dashboard(
         return {
             group: report(store, start=start, end=end, provider=provider, zone=zone, group_by=group)
             for group in ("provider", "day", "model", "project", "session")
+        }
+
+
+def load_work_patterns(
+    path: Path,
+    *,
+    prices: Prices,
+    start: str | None = None,
+    end: str | None = None,
+    provider: str | None = None,
+    zone: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    filters = {"start": start, "end": end, "provider": provider, "zone": zone}
+    with Store(path, read_only=True) as store:
+        return {
+            "tools": tool_profile(store, **filters),
+            "cache": cache_efficiency(store, **filters),
+            "friction": project_friction(store, **filters),
+            "cost": cost_by_model(store, prices=prices, **filters),
+            "cost_total": cost_total(store, prices=prices, **filters),
+            "cost_project": cost_by_project(store, prices=prices, **filters),
+            "cost_day": cost_by_day(store, prices=prices, **filters),
         }
 
 

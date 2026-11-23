@@ -5,7 +5,13 @@ import json
 import duckdb
 import pytest
 
-from copilot_metrics.dashboard_data import coverage_rows, load_dashboard, ranking_rows
+from copilot_metrics.dashboard_data import (
+    coverage_rows,
+    load_dashboard,
+    load_work_patterns,
+    ranking_rows,
+)
+from copilot_metrics.prices import load_prices
 from copilot_metrics.reports import daily_series, render
 from copilot_metrics.storage import Store
 from tests.copilot_metrics.test_collectors import event, write_records
@@ -211,3 +217,15 @@ def test_attention_session_exports_are_focused_filtered_and_preserve_report_meta
     assert attention_sessions(result, category="approval_request")["rows"] == []
     with pytest.raises(ValueError, match="invalid_attention_category"):
         attention_sessions(result, category="input_tokens")
+
+
+def test_work_patterns_loader_applies_shared_filters_and_leaves_unpriced_models_unavailable(
+    dashboard_database, tmp_path
+):
+    before = dashboard_database.read_bytes()
+    results = load_work_patterns(dashboard_database, prices=load_prices(tmp_path / "absent.toml"), zone="UTC")
+    assert set(results) == {"tools", "cache", "friction", "cost", "cost_total", "cost_project", "cost_day"}
+    copilot = load_work_patterns(dashboard_database, prices={}, provider="copilot", zone="UTC")
+    assert {row["model"] for row in copilot["cost"]["rows"]} == {"model-a", "model-b"}
+    assert all(row["estimated_cost_usd"] is None for row in copilot["cost"]["rows"])
+    assert dashboard_database.read_bytes() == before

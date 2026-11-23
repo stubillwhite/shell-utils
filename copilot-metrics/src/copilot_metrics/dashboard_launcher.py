@@ -13,6 +13,7 @@ def launch(path: Path) -> int:
         "--server.address=127.0.0.1",
         "--server.port=8502",
         "--browser.gatherUsageStats=false",
+        "--client.toolbarMode=viewer",
         "--theme.base=dark",
         "--theme.primaryColor=#6CB6FF",
         "--theme.backgroundColor=#0E1117",

@@ -144,3 +144,57 @@ def test_existing_parent_directory_permissions_are_preserved(tmp_path):
     source = write_records(tmp_path, [event("session.start", {"sessionId": "s"})])
     assert run("import", "--provider", "copilot", "--source-root", source, "--db", database).returncode == 0
     assert os.stat(tmp_path).st_mode & 0o777 == 0o750
+
+
+def import_tool_session(tmp_path):
+    source = write_records(
+        tmp_path,
+        [
+            event("session.start", {"sessionId": "s"}),
+            event("tool.execution_start", {"toolName": "bash", "toolCallId": "a"}, "start"),
+            event("tool.execution_complete", {"toolCallId": "a", "success": False}, "done"),
+            event(
+                "session.usage_record",
+                {
+                    "usage": {
+                        "apiCallId": "u",
+                        "model": "m",
+                        "inputTokens": 1_000_000,
+                        "outputTokens": 0,
+                        "cacheReadTokens": 0,
+                        "cacheWriteTokens": 0,
+                    }
+                },
+                "usage",
+            ),
+        ],
+    )
+    database = tmp_path / "metrics.duckdb"
+    imported = run("import", "--db", database, "--provider", "copilot", "--source-root", source)
+    assert imported.returncode == 0, imported.stderr
+    return database
+
+
+def test_insights_tools_json_reports_error_rate(tmp_path):
+    database = import_tool_session(tmp_path)
+    result = run("insights", "tools", "--db", database, "--format", "json", "--timezone", "UTC")
+    assert result.returncode == 0, result.stderr
+    (row,) = json.loads(result.stdout)["rows"]
+    assert (row["tool"], row["calls"], row["error_rate"]) == ("bash", 1, 1.0)
+
+
+def test_insights_cost_uses_prices_file_and_leaves_unpriced_models_unavailable(tmp_path):
+    database = import_tool_session(tmp_path)
+    prices = tmp_path / "prices.toml"
+    unpriced = run("insights", "cost", "--db", database, "--prices", prices, "--format", "json")
+    assert json.loads(unpriced.stdout)["rows"][0]["estimated_cost_usd"] is None
+    prices.write_text('[models."m"]\ninput = 3.0\noutput = 0.0\ncache_read = 0.0\ncache_write = 0.0\n')
+    priced = run("insights", "cost", "--db", database, "--prices", prices, "--format", "json")
+    assert json.loads(priced.stdout)["rows"][0]["estimated_cost_usd"] == 3.0
+
+
+def test_insights_csv_renders_unavailable_as_empty_cells(tmp_path):
+    database = import_tool_session(tmp_path)
+    result = run("insights", "cache", "--db", database, "--format", "csv")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines()[0].startswith("provider,model,")

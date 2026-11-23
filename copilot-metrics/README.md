@@ -44,6 +44,41 @@ poetry run copilot-metrics report --group-by day --format chart --timezone UTC
 poetry run copilot-metrics report --group-by day --format table
 ```
 
+## Work-pattern insights
+
+```sh
+poetry run copilot-metrics insights tools      # calls, errors and error rate per tool; MCP vs built-in
+poetry run copilot-metrics insights cache      # prompt-cache hit rate per provider and model
+poetry run copilot-metrics insights friction   # errors, approvals, clarifications per 100 tool calls, per project
+poetry run copilot-metrics insights cost --prices prices.toml          # by model
+poetry run copilot-metrics insights cost-project --prices prices.toml  # by project
+poetry run copilot-metrics insights cost-day --prices prices.toml      # by local day, providers combined
+poetry run copilot-metrics insights cost-total --prices prices.toml    # headline total
+```
+
+All accept `--provider`, `--from`, `--to`, `--timezone` and `--format table|json|csv`.
+Cache rate is `read / (input + read + write)` for Claude, whose input excludes cache, and
+`read / input` for Copilot and Codex, whose input includes it. Friction signals stay separate.
+
+`cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
+directory); it is not your bill, and Copilot actually bills by premium request. Key each model
+exactly as recorded (Copilot `claude-sonnet-5.5`, Claude `claude-sonnet-5-5`):
+
+```toml
+[models."model-name"]
+input = <usd per million>
+output = <usd per million>
+cache_read = <usd per million>
+cache_write = <usd per million>
+```
+
+Each usage record is priced on its own. Records for unpriced models, or with any unreported token
+field, are excluded and counted in `unpriced_events`, so any total with unpriced records is a lower
+bound. A group with nothing priceable shows `unavailable`, never zero.
+
+In the dashboard the headline total and daily cost chart are on **Overview**, cost by project is on
+**Models & Projects**, and cost by model is on **Work patterns**.
+
 ## Dashboard
 
 After importing history, start the dark Streamlit dashboard:
@@ -61,9 +96,11 @@ Streamlit usage telemetry, and sets a dark theme independently of the working
 directory. Charts use local assets, not remote services. There is no
 authentication: do not expose or proxy the server publicly.
 
-The five views are **Overview** (provider summaries and daily trends),
+The six views are **Overview** (provider summaries and daily trends),
 **Attention signals** (attention evidence, daily trends and session drill-down),
 **Models & Projects** (reported-token rankings and attribution),
+**Work patterns** (tool errors, cache hit rate, per-project friction, estimated cost;
+estimates read `prices.toml` from the working directory),
 **Sessions** (sortable observations and recorded spans), and **Data Quality**
 (coverage, diagnostic codes, and metric definitions). CSV/JSON downloads retain
 the current report filters; model/project selections apply only to their own
@@ -350,8 +387,8 @@ line numbers for diagnostics in selected files, including unchanged files. Remov
 associated `.wal`/`.tmp` files only when no process is using it to erase imported
 metrics; provider histories are independent.
 
-Live hooks/telemetry, editor extensions, pricing, billing, and
-productivity scoring are outside this version.
+Live hooks/telemetry, editor extensions, billing, and productivity scoring are outside
+this version. Cost is only an estimate from rates you supply (see Work-pattern insights).
 
 ## Development
 

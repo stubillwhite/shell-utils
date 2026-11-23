@@ -20,6 +20,7 @@ def test_dashboard_launch_is_packaged_local_dark_and_propagates_exit_status(tmp_
     assert "--server.port=8502" in arguments
     assert "--browser.gatherUsageStats=false" in arguments
     assert "--theme.base=dark" in arguments
+    assert "--client.toolbarMode=viewer" in arguments
     assert arguments[-3:] == ["--", "--db", str(tmp_path / "chosen.duckdb")]
     assert not runner.call_args.kwargs.get("shell", False)
 

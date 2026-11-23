@@ -3,7 +3,9 @@ import json
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfoNotFoundError
 
 import duckdb
@@ -11,8 +13,18 @@ import duckdb
 from copilot_metrics.collectors import opaque
 from copilot_metrics.dashboard_launcher import launch
 from copilot_metrics.hook_installation import HookInstallError, install_hooks
+from copilot_metrics.insights import (
+    cache_efficiency,
+    cost_by_day,
+    cost_by_model,
+    cost_by_project,
+    cost_total,
+    project_friction,
+    tool_profile,
+)
 from copilot_metrics.interruptions import hook_config, record_hook
 from copilot_metrics.models import PROVIDERS
+from copilot_metrics.prices import load_prices
 from copilot_metrics.reports import render, report
 from copilot_metrics.storage import Store
 
@@ -32,6 +44,17 @@ def files(provider: str, root: Path) -> tuple[Path, ...]:
         return (root,)
     pattern = "events.jsonl" if provider == "copilot" else "*.jsonl"
     return tuple(sorted(root.rglob(pattern)))
+
+
+INSIGHT_TOPICS: dict[str, Callable[..., dict[str, Any]]] = {
+    "tools": tool_profile,
+    "cache": cache_efficiency,
+    "friction": project_friction,
+    "cost": cost_by_model,
+    "cost-project": cost_by_project,
+    "cost-day": cost_by_day,
+    "cost-total": cost_total,
+}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -57,6 +80,15 @@ def parser() -> argparse.ArgumentParser:
                 "--group-by", choices=("day", "provider", "model", "session", "project"), default="provider"
             )
             sub.add_argument("--format", choices=("table", "json", "csv", "chart"), default="table")
+    insights = commands.add_parser("insights", help="Work-pattern reports derived from imported history.")
+    insights.add_argument("topic", choices=tuple(INSIGHT_TOPICS))
+    insights.add_argument("--db", type=Path, default=Path("metrics.duckdb"))
+    insights.add_argument("--provider", choices=PROVIDERS)
+    insights.add_argument("--from", dest="start")
+    insights.add_argument("--to", dest="end")
+    insights.add_argument("--timezone", dest="zone")
+    insights.add_argument("--prices", type=Path, default=Path("prices.toml"), help="Per-million-token rates (cost).")
+    insights.add_argument("--format", choices=("table", "json", "csv"), default="table")
     for command in ("record-interruption", "interruption-hooks"):
         sub = commands.add_parser(command)
         sub.add_argument("--provider", choices=PROVIDERS, required=True)
@@ -90,6 +122,14 @@ def execute(args: argparse.Namespace) -> int:
         return 0
     if args.command == "dashboard":
         return launch(args.db)
+    if args.command == "insights":
+        extra = {"prices": load_prices(args.prices)} if args.topic.startswith("cost") else {}
+        with Store(args.db, read_only=True) as store:
+            result = INSIGHT_TOPICS[args.topic](
+                store, start=args.start, end=args.end, provider=args.provider, zone=args.zone, **extra
+            )
+        print(render(result, args.format))
+        return 0
     if args.command == "report":
         with Store(args.db, read_only=True) as store:
             result = report(

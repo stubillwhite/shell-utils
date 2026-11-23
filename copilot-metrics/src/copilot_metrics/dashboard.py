@@ -14,9 +14,11 @@ from copilot_metrics.dashboard_data import (
     attention_sessions,
     coverage_rows,
     load_dashboard,
+    load_work_patterns,
     ranking_rows,
 )
 from copilot_metrics.models import PROVIDERS, TOKEN_FIELDS
+from copilot_metrics.prices import load_prices
 from copilot_metrics.reports import daily_series, local_zone, render
 
 
@@ -78,7 +80,52 @@ def combined_daily(result: dict[str, Any]) -> None:
     st.dataframe(rows, hide_index=True)
 
 
-def overview(results: dict[str, dict[str, Any]]) -> None:
+def money(value: float | None) -> str:
+    return "Unavailable" if value is None else f"${value:,.2f}"
+
+
+def headline_cost(total: dict[str, Any]) -> None:
+    (row,) = total["rows"]
+    st.metric("Estimated cost (USD)", money(row["estimated_cost_usd"]))
+    if row["unpriced_events"]:
+        st.caption(
+            f'Lower bound: {row["unpriced_events"]} usage records could not be priced '
+            f'({row["unpriced_models"]}). Add rates to prices.toml.'
+            if row["priced_events"]
+            else f'No usage could be priced ({row["unpriced_models"]}). Add rates to prices.toml.'
+        )
+    st.caption("Estimate at your configured per-token rates, not a bill. Providers are combined.")
+
+
+def daily_cost(result: dict[str, Any]) -> None:
+    st.subheader("Daily estimated cost")
+    rows = [
+        {
+            **row,
+            "coverage": "partial" if row["unpriced_events"] else "complete",
+            "reported": money(row["estimated_cost_usd"]),
+        }
+        for row in result["rows"]
+        if row["estimated_cost_usd"] is not None
+    ]
+    if not rows:
+        st.info("No priced usage for the selected filters.")
+        return
+    chart = (
+        alt.Chart(alt.Data(values=rows))
+        .mark_bar(color="#6CB6FF")
+        .encode(
+            x=alt.X("day:O", title="Observed day"),
+            y=alt.Y("estimated_cost_usd:Q", title="Estimated cost (USD)"),
+            tooltip=["day:N", "reported:N", "coverage:N", "unpriced_events:Q"],
+        )
+    )
+    st.altair_chart(chart)
+    st.caption("Partial = some usage that day could not be priced. Days with no priced usage are omitted, not zero.")
+
+
+def overview(results: dict[str, dict[str, Any]], patterns: dict[str, dict[str, Any]]) -> None:
+    headline_cost(patterns["cost_total"])
     for row in results["provider"]["rows"]:
         st.subheader(row["provider"].title())
         columns = st.columns(4)
@@ -92,6 +139,7 @@ def overview(results: dict[str, dict[str, Any]]) -> None:
             f'output in {row["output_tokens_sessions"]}/{row["sessions"]}.'
         )
     combined_daily(results["day"])
+    daily_cost(patterns["cost_day"])
     field = st.selectbox("Daily token category", TOKEN_FIELDS, key="daily_metric")
     for provider in sorted({row["provider"] for row in results["day"]["rows"]}):
         rows = [row for row in results["day"]["rows"] if row["provider"] == provider]
@@ -272,10 +320,29 @@ def data_quality(result: dict[str, Any]) -> None:
         )
 
 
-def show_dashboard(path: Path) -> None:
+WORK_PATTERN_SECTIONS = (
+    ("tools", "Tool profile", "tool profile", "work_tools"),
+    ("cache", "Prompt-cache efficiency", "cache efficiency", "work_cache"),
+    ("friction", "Project friction", "project friction", "work_friction"),
+    ("cost", "Estimated cost", "estimated cost", "work_cost"),
+)
+
+
+def work_patterns(patterns: dict[str, dict[str, Any]]) -> None:
+    for name, heading, label, key in WORK_PATTERN_SECTIONS:
+        st.subheader(heading)
+        for note in patterns[name]["notes"]:
+            st.caption(note)
+        report_table(patterns[name], label=label, key=key)
+
+
+def show_dashboard(path: Path, *, prices_path: Path = Path("prices.toml")) -> None:
     st.set_page_config(page_title="Local coding-assistant metrics", layout="wide")
     st.title("Coding-assistant metrics")
-    st.caption("Local, read-only imported evidence. No transcript access, pricing estimates, or productivity scores.")
+    st.caption(
+        "Local, read-only imported evidence. No transcript access or productivity scores. "
+        "Cost figures are estimates from your own price file."
+    )
     with st.sidebar:
         st.header("Filters")
         provider = st.selectbox("Provider", ("All", *PROVIDERS), key="provider")
@@ -289,15 +356,21 @@ def show_dashboard(path: Path) -> None:
         st.error("Choose complete From and To dates.")
         return
     try:
+        prices = load_prices(prices_path)
+    except ValueError:
+        st.error("Invalid prices file: costs are unavailable. Fix prices.toml and Refresh.")
+        prices = {}
+    try:
         if not zone:
             raise ValueError("invalid_timezone")
-        results = load_dashboard(
-            path,
-            provider=None if provider == "All" else provider,
-            start=start.isoformat() if not all_history and isinstance(start, date) else None,
-            end=end.isoformat() if not all_history and isinstance(end, date) else None,
-            zone=zone,
-        )
+        filters = {
+            "provider": None if provider == "All" else provider,
+            "start": start.isoformat() if not all_history and isinstance(start, date) else None,
+            "end": end.isoformat() if not all_history and isinstance(end, date) else None,
+            "zone": zone,
+        }
+        patterns = load_work_patterns(path, prices=prices, **filters)
+        results = load_dashboard(path, **filters)
     except (ValueError, ZoneInfoNotFoundError):
         st.error("Invalid filters. Choose a valid IANA timezone and a From date no later than To.")
         return
@@ -314,11 +387,11 @@ def show_dashboard(path: Path) -> None:
     )
     if not results["provider"]["rows"]:
         st.info("No data for the selected filters. Import history with the CLI or adjust the filters.")
-    summary, attention, models, sessions, quality = st.tabs(
-        ["Overview", "Attention signals", "Models & Projects", "Sessions", "Data Quality"]
+    summary, attention, models, patterns_tab, sessions, quality = st.tabs(
+        ["Overview", "Attention signals", "Models & Projects", "Work patterns", "Sessions", "Data Quality"]
     )
     with summary:
-        overview(results)
+        overview(results, patterns)
     with attention:
         attention_signals(results)
     with models:
@@ -331,6 +404,12 @@ def show_dashboard(path: Path) -> None:
         breakdown(results["model"], label="models", field=field)
         st.subheader("Projects")
         breakdown(results["project"], label="projects", field=field)
+        st.subheader("Estimated cost by project")
+        for note in patterns["cost_project"]["notes"]:
+            st.caption(note)
+        report_table(patterns["cost_project"], label="cost by project", key="cost_projects")
+    with patterns_tab:
+        work_patterns(patterns)
     with sessions:
         st.caption(
             "Sort columns to explore recorded sessions. Elapsed seconds are recorded event spans, not active time; "
@@ -345,7 +424,9 @@ def show_dashboard(path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Read-only metrics dashboard.")
     parser.add_argument("--db", type=Path, default=Path("metrics.duckdb"))
-    show_dashboard(parser.parse_args().db)
+    parser.add_argument("--prices", type=Path, default=Path("prices.toml"))
+    arguments = parser.parse_args()
+    show_dashboard(arguments.db, prices_path=arguments.prices)
 
 
 if __name__ == "__main__":

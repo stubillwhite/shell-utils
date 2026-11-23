@@ -19,6 +19,33 @@ def local_zone() -> str:
     return os.environ.get("TZ") or (location.split("/zoneinfo/", 1)[1] if "/zoneinfo/" in location else "UTC")
 
 
+def selected_events(
+    store: Store,
+    *,
+    start: str | None,
+    end: str | None,
+    provider: str | None,
+    tz: ZoneInfo,
+) -> list[dict[str, Any]]:
+    lower = datetime.combine(date.fromisoformat(start), time.min, tz) if start else None
+    upper = datetime.combine(date.fromisoformat(end) + timedelta(days=1), time.min, tz) if end else None
+    if lower and upper and lower >= upper:
+        raise ValueError("invalid_date_range")
+    cursor = store.connection.execute("SELECT * FROM normalized_events ORDER BY timestamp, identity")
+    columns = [column[0] for column in cursor.description]
+    all_events = [
+        {**dict(zip(columns, row, strict=True)), "timestamp": datetime.fromisoformat(row[columns.index("timestamp")])}
+        for row in cursor.fetchall()
+    ]
+    return [
+        event
+        for event in all_events
+        if (provider is None or event["provider"] == provider)
+        and (lower is None or event["timestamp"] >= lower)
+        and (upper is None or event["timestamp"] < upper)
+    ]
+
+
 def report(
     store: Store,
     *,
@@ -32,23 +59,7 @@ def report(
         raise ValueError("invalid_group")
     zone = zone or local_zone()
     tz = ZoneInfo(zone)
-    lower = datetime.combine(date.fromisoformat(start), time.min, tz) if start else None
-    upper = datetime.combine(date.fromisoformat(end) + timedelta(days=1), time.min, tz) if end else None
-    if lower and upper and lower >= upper:
-        raise ValueError("invalid_date_range")
-    cursor = store.connection.execute("SELECT * FROM normalized_events ORDER BY timestamp, identity")
-    columns = [column[0] for column in cursor.description]
-    all_events = [
-        {**dict(zip(columns, row, strict=True)), "timestamp": datetime.fromisoformat(row[columns.index("timestamp")])}
-        for row in cursor.fetchall()
-    ]
-    selected = [
-        event
-        for event in all_events
-        if (provider is None or event["provider"] == provider)
-        and (lower is None or event["timestamp"] >= lower)
-        and (upper is None or event["timestamp"] < upper)
-    ]
+    selected = selected_events(store, start=start, end=end, provider=provider, tz=tz)
     modeled_sessions = {event["session"] for event in selected if event["kind"] != "session"}
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for event in selected:
@@ -237,5 +248,5 @@ def render(result: dict[str, Any], format_name: str, *, width: int = 80) -> str:
     lines = ["Timezone: " + result["timezone"], "\t".join(columns)]
     lines.extend("\t".join("unavailable" if row[key] is None else str(row[key]) for key in columns) for row in rows)
     lines.extend(result["notes"])
-    lines.extend(f'{item["provider"]}: {item["code"]} ({item["count"]})' for item in result["diagnostics"])
+    lines.extend(f'{item["provider"]}: {item["code"]} ({item["count"]})' for item in result.get("diagnostics", []))
     return "\n".join(lines)
