@@ -46,6 +46,15 @@ def selected_events(
     ]
 
 
+def session_spans(events: list[dict[str, Any]]) -> dict[tuple[str, str], tuple[datetime, datetime]]:
+    spans: dict[tuple[str, str], tuple[datetime, datetime]] = {}
+    for event in events:
+        key = (event["provider"], event["session"])
+        low, high = spans.get(key, (event["timestamp"], event["timestamp"]))
+        spans[key] = (min(low, event["timestamp"]), max(high, event["timestamp"]))
+    return spans
+
+
 def report(
     store: Store,
     *,
@@ -60,6 +69,7 @@ def report(
     zone = zone or local_zone()
     tz = ZoneInfo(zone)
     selected = selected_events(store, start=start, end=end, provider=provider, tz=tz)
+    selected_spans = session_spans(selected)
     modeled_sessions = {event["session"] for event in selected if event["kind"] != "session"}
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for event in selected:
@@ -89,17 +99,9 @@ def report(
         }
         if group_by == "project":
             row.update(project=events[0].get("project") or "unknown", project_id=value, model=model)
-        duration_events = (
-            events
-            if group_by in ("day", "project")
-            else [event for event in selected if event["session"] in sessions and event["provider"] == name]
-        )
+        spans = session_spans(events) if group_by in ("day", "project") else selected_spans
         row["elapsed_seconds"] = sum(
-            (
-                max(event["timestamp"] for event in duration_events if event["session"] == session)
-                - min(event["timestamp"] for event in duration_events if event["session"] == session)
-            ).total_seconds()
-            for session in sessions
+            (spans[(name, session)][1] - spans[(name, session)][0]).total_seconds() for session in sessions
         )
         for field in TOKEN_FIELDS:
             values = [event[field] for event in usage if event[field] is not None]
