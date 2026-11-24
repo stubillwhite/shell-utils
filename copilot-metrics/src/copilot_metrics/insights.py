@@ -1,12 +1,13 @@
 from collections import Counter
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from copilot_metrics.models import PERMISSION_CAUSES, TOKEN_FIELDS
 from copilot_metrics.prices import Prices, estimate_cost
-from copilot_metrics.reports import local_zone, selected_events
+from copilot_metrics.reports import local_zone, selected_events, session_spans
 from copilot_metrics.storage import Store
 
 PER_HUNDRED = 100
@@ -357,8 +358,43 @@ def loop_signals(calls: list[dict[str, Any]], failed: set[str]) -> dict[str, int
     }
 
 
+GIT_UNAVAILABLE: dict[str, int | None] = {"commits": None, "lines_added": None, "lines_deleted": None}
+
+
+def git_credit(
+    store: Store, spans: dict[tuple[str, str], tuple[datetime, datetime]], idle_minutes: float
+) -> dict[str, dict[str, int]]:
+    if not store.git_enabled() or not store.has_table("git_commits"):
+        return {}
+    located = store.connection.execute(
+        "SELECT DISTINCT d.session, c.sha, c.committed_at, c.added, c.deleted "
+        "FROM git_session_dirs d LEFT JOIN git_commits c USING (repo) WHERE d.repo IS NOT NULL"
+    ).fetchall()
+    windows = {session: (low, high + timedelta(minutes=idle_minutes)) for (_, session), (low, high) in spans.items()}
+    credit: dict[str, dict[str, int]] = {
+        session: {"commits": 0, "lines_added": 0, "lines_deleted": 0} for session, *_ in located
+    }
+    for session, sha, committed_at, added, deleted in located:
+        low, high = windows.get(session, (None, None))
+        if sha is None or low is None or high is None or not low <= datetime.fromisoformat(committed_at) <= high:
+            continue
+        total = credit[session]
+        credit[session] = {
+            "commits": total["commits"] + 1,
+            "lines_added": total["lines_added"] + added,
+            "lines_deleted": total["lines_deleted"] + deleted,
+        }
+    return credit
+
+
 def session_quality_row(
-    key: tuple[str, str], owned: list[dict[str, Any]], *, project: str, prices: Prices, idle_minutes: float
+    key: tuple[str, str],
+    owned: list[dict[str, Any]],
+    *,
+    project: str,
+    prices: Prices,
+    idle_minutes: float,
+    credit: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     errors = [event for event in owned if event["kind"] == "tool_error"]
     failed = {event["identity"] for event in errors if event["cause"] not in PERMISSION_CAUSES}
@@ -386,6 +422,8 @@ def session_quality_row(
         "compactions": steering_count(key[0], owned, "compaction"),
         "estimated_cost_usd": cost,
         "cost_per_active_hour_usd": hourly,
+        **(GIT_UNAVAILABLE if credit is None else credit),
+        "cost_per_commit_usd": None if credit is None or cost is None else ratio(cost, credit["commits"]),
     }
 
 
@@ -401,8 +439,16 @@ def session_quality(
 ) -> dict[str, Any]:
     zone, events = events_of(store, start=start, end=end, provider=provider, zone=zone)
     projects = session_projects(events)
+    credits = git_credit(store, session_spans(events), idle_minutes)
     rows = [
-        session_quality_row(key, owned, project=projects[key], prices=prices, idle_minutes=idle_minutes)
+        session_quality_row(
+            key,
+            owned,
+            project=projects[key],
+            prices=prices,
+            idle_minutes=idle_minutes,
+            credit=credits.get(key[1]),
+        )
         for key, owned in sorted(events_by_session(events).items())
     ]
     return {
@@ -425,6 +471,10 @@ def session_quality(
             "compactions",
             "estimated_cost_usd",
             "cost_per_active_hour_usd",
+            "commits",
+            "lines_added",
+            "lines_deleted",
+            "cost_per_commit_usd",
         ],
         "notes": [
             f"Active minutes is an estimate: gaps between recorded events longer than {idle_minutes:g} minutes "
@@ -441,6 +491,11 @@ def session_quality(
             "upgrading so earlier sessions gain these counts.",
             "Cost is the per-token estimate from prices.toml; it and cost per active hour are unavailable when "
             "nothing could be priced or no active time was observed. No combined quality score is computed.",
+            "Commits are your own non-merge commits, on any branch, made between a session's first event and its last "
+            "event plus one idle window. Overlapping sessions in one repo each count the same commit, so totals are "
+            "not additive. Git columns are unavailable unless Git is enabled and the session's folder is a "
+            "repository that still exists; run an import after enabling. Cost per commit is unavailable with no "
+            "commits.",
         ],
         "rows": rows,
     }

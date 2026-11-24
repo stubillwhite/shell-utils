@@ -215,6 +215,7 @@ def execute(args: argparse.Namespace) -> int:
             for line, code in diagnostics:
                 print(f"{provider}: {path}: line {line}: {code}", file=sys.stderr)
             partial = partial or bool(diagnostics)
+        store.sync_git(idle_minutes=DEFAULT_IDLE_MINUTES)
         print(f"Imported {changed} changed files; {len(available) - changed} unchanged or failed.")
     return 2 if partial else 0
 

@@ -10,6 +10,7 @@ import duckdb
 
 from copilot_metrics.collectors import COLLECTOR_REVISION, collect, opaque
 from copilot_metrics.collectors.interruptions import collect_interruptions
+from copilot_metrics.git_history import commits_between, repository_root
 from copilot_metrics.models import Collection
 
 
@@ -20,6 +21,15 @@ def private_creation() -> Iterator[None]:
         yield
     finally:
         os.umask(mask)
+
+
+GIT_DIRECTORIES_TABLE = (
+    "CREATE TABLE IF NOT EXISTS git_session_dirs (source_id VARCHAR, session VARCHAR, cwd VARCHAR, repo VARCHAR)"
+)
+GIT_COMMITS_TABLE = (
+    "CREATE TABLE IF NOT EXISTS git_commits "
+    "(repo VARCHAR, sha VARCHAR, committed_at VARCHAR, added BIGINT, deleted BIGINT)"
+)
 
 
 class Store:
@@ -95,11 +105,16 @@ class Store:
     def import_file(self: "Store", provider: str, path: Path, *, interruptions: bool = False) -> bool:
         source_id = opaque(provider + (":interruptions:" if interruptions else ":") + str(path.resolve()))
         content_digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        digest = ("interruptions-1" if interruptions else COLLECTOR_REVISION) + ":" + content_digest
+        revision = "interruptions-1" if interruptions else COLLECTOR_REVISION + (":git" if self.git_enabled() else "")
+        digest = revision + ":" + content_digest
         previous = self.connection.execute("SELECT digest FROM sources WHERE source_id = ?", [source_id]).fetchone()
         if previous and previous[0] == digest:
             return False
-        collection = collect_interruptions(provider, path) if interruptions else collect(provider, path)
+        collection = (
+            collect_interruptions(provider, path)
+            if interruptions
+            else collect(provider, path, keep_directories=self.git_enabled())
+        )
         if hashlib.sha256(path.read_bytes()).hexdigest() != content_digest:
             raise OSError("source_changed_during_import")
         with private_creation():
@@ -107,6 +122,9 @@ class Store:
             try:
                 self.connection.execute("DELETE FROM events WHERE source_id = ?", [source_id])
                 self.connection.execute("DELETE FROM diagnostics WHERE source_id = ?", [source_id])
+                if self.git_enabled():
+                    self.connection.execute(GIT_DIRECTORIES_TABLE)
+                    self.connection.execute("DELETE FROM git_session_dirs WHERE source_id = ?", [source_id])
                 self.connection.execute(
                     "INSERT OR REPLACE INTO sources VALUES (?, ?, current_timestamp)", [source_id, digest]
                 )
@@ -128,3 +146,48 @@ class Store:
                 "INSERT INTO diagnostics VALUES (?, ?, ?, ?)",
                 [(source_id, provider, item.line, item.code) for item in collection.diagnostics],
             )
+        if collection.directories and self.git_enabled():
+            self.connection.executemany(
+                "INSERT INTO git_session_dirs VALUES (?, ?, ?, NULL)",
+                [(source_id, session, cwd) for session, cwd in collection.directories],
+            )
+
+    def sync_git(self: "Store", *, idle_minutes: float) -> None:
+        if not self.git_enabled() or not self.has_table("git_session_dirs"):
+            return
+        self.connection.execute(GIT_COMMITS_TABLE)
+        spans = self.connection.execute(
+            """
+                SELECT d.cwd, min(e.timestamp), max(e.timestamp) FROM git_session_dirs d
+                JOIN normalized_events e USING (session) GROUP BY d.cwd
+            """
+        ).fetchall()
+        located = [(cwd, repository_root(cwd), first, last) for cwd, first, last in spans]
+        self.connection.execute("UPDATE git_session_dirs SET repo = NULL")
+        for root in {root for _, root, _, _ in located if root}:
+            windows = [(first, last) for _, other, first, last in located if other == root]
+            commits = commits_between(
+                root=root,
+                since=min(first for first, _ in windows),
+                until=max(last for _, last in windows),
+                idle_minutes=idle_minutes,
+            )
+            if commits is None:
+                continue
+            repo = opaque(root)
+            self.connection.execute("DELETE FROM git_commits WHERE repo = ?", [repo])
+            if commits:
+                self.connection.executemany(
+                    "INSERT INTO git_commits VALUES (?, ?, ?, ?, ?)",
+                    [(repo, commit.sha, commit.committed_at, commit.added, commit.deleted) for commit in commits],
+                )
+            self.connection.executemany(
+                "UPDATE git_session_dirs SET repo = ? WHERE cwd = ?",
+                [(repo, cwd) for cwd, other, _, _ in located if other == root],
+            )
+
+    def has_table(self: "Store", name: str) -> bool:
+        return (
+            self.connection.execute("SELECT 1 FROM information_schema.tables WHERE table_name = ?", [name]).fetchone()
+            is not None
+        )

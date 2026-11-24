@@ -93,7 +93,14 @@ collector revision 6.
 
 Git access is off by default. `copilot-metrics git enable` stores one switch in the database's `settings` table;
 `copilot-metrics git disable` turns it off and purges every stored Git table (any table named `git_*`), leaving usage
-data untouched. The switch alone reads nothing from Git yet: later increments add the commit read that honours it.
+data untouched. While enabled, `import` stores each session's working directory in `git_session_dirs` and then runs
+read-only `git log` in those repositories, storing only short SHAs, commit times and line counts in `git_commits`
+(no messages, paths or author details). Enabling makes the next `import` re-read every file so history gains its
+directories. `sessions` then adds `commits`, `lines_added`, `lines_deleted` and `cost_per_commit_usd`: your own
+non-merge commits, on any branch, between a session's first event and its last plus one idle window (the import
+uses the default 5 minutes). Overlapping sessions in one repository each count the same commit, so totals are not
+additive. These columns are blank, not zero, when Git is off, the folder is not a repository or no longer exists,
+or no directory was recorded.
 
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
 directory); it is not your bill, and Copilot actually bills by premium request. Key each model

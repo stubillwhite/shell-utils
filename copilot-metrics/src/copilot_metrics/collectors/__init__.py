@@ -75,7 +75,7 @@ def is_copilot_compaction(data: dict[str, Any]) -> bool:
     return data.get("success") is True or data.get("outcome") == "applied"
 
 
-def collect(provider: str, path: Path) -> Collection:
+def collect(provider: str, path: Path, *, keep_directories: bool = False) -> Collection:
     if provider not in PROVIDERS:
         raise ValueError("unknown_provider")
     events: dict[tuple[str, str, str], Metric] = {}
@@ -85,6 +85,7 @@ def collect(provider: str, path: Path) -> Collection:
     child = "subagents" in path.parts
     previous: dict[str, int | None] = {}
     projects: dict[str, tuple[str, str]] = {}
+    directories: set[tuple[str, str]] = set()
     with path.open(encoding="utf-8") as source:
         lines = source.readlines()
     for number, line in enumerate(lines, 1):
@@ -138,6 +139,7 @@ def collect(provider: str, path: Path) -> Collection:
         if isinstance(cwd, str) and posixpath.isabs(cwd):
             normalized = posixpath.normpath(cwd)
             projects[session] = (opaque(normalized), posixpath.basename(normalized) or "/")
+            directories.add((session, normalized))
         elif provider == "copilot" and kind == "session.start":
             projects.pop(session, None)
         project_id, project = projects.get(session, (None, None))
@@ -309,4 +311,6 @@ def collect(provider: str, path: Path) -> Collection:
             diagnostics.append(Diagnostic(number, str(error)))
     if not events and not diagnostics and not ignored_metadata:
         diagnostics.append(Diagnostic(0, "no_timestamped_events"))
-    return Collection(tuple(events.values()), tuple(diagnostics))
+    return Collection(
+        tuple(events.values()), tuple(diagnostics), tuple(sorted(directories)) if keep_directories else ()
+    )

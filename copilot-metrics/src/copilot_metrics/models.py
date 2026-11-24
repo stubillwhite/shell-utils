@@ -31,6 +31,7 @@ class Diagnostic:
 class Collection:
     events: tuple[Metric, ...]
     diagnostics: tuple[Diagnostic, ...]
+    directories: tuple[tuple[str, str], ...] = ()
 
 
 PROVIDERS = ("copilot", "codex", "claude")
