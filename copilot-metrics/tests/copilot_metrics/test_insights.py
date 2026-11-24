@@ -7,6 +7,7 @@ from copilot_metrics.insights import (
     cost_by_project,
     cost_total,
     project_friction,
+    session_quality,
     tool_profile,
 )
 from copilot_metrics.prices import load_prices
@@ -284,3 +285,135 @@ def test_cost_total_is_unavailable_when_no_prices_are_configured(store, tmp_path
     import_copilot(store, tmp_path, [priced_usage("a")])
     (row,) = cost_total(store, prices={}, zone="UTC")["rows"]
     assert row["estimated_cost_usd"] is None
+
+
+def quality_rows(store, **options):
+    return session_quality(store, prices=options.pop("prices", PRICES), zone="UTC", **options)["rows"]
+
+
+def test_active_time_excludes_idle_gaps_so_a_session_left_open_overnight_is_not_counted_as_work(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            tool_start("a", "bash", "2026-01-01T10:00:00Z"),
+            tool_start("b", "bash", "2026-01-01T10:02:00Z"),
+            tool_start("c", "bash", "2026-01-01T10:30:00Z"),
+            tool_start("d", "bash", "2026-01-01T10:31:00Z"),
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert row["active_minutes"] == pytest.approx(3.0)
+
+
+def test_idle_threshold_is_adjustable_because_the_right_cut_off_depends_on_how_you_work(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [tool_start("a", "bash", "2026-01-01T10:00:00Z"), tool_start("b", "bash", "2026-01-01T10:31:00Z")],
+    )
+    (row,) = quality_rows(store, idle_minutes=60)
+    assert row["active_minutes"] == pytest.approx(31.0)
+
+
+def test_a_run_of_consecutive_failures_is_a_stuck_signal_that_a_pooled_error_rate_hides(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            *[tool_start(name, "bash", f"2026-01-01T10:0{index}:00Z") for index, name in enumerate("abcde")],
+            tool_failure("a"),
+            tool_failure("c"),
+            tool_failure("d"),
+            tool_failure("e"),
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert (row["tool_calls"], row["tool_errors"], row["longest_error_streak"]) == (5, 4, 3)
+
+
+def test_streaks_follow_time_order_not_import_order(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            tool_start("c", "bash", "2026-01-01T10:03:00Z"),
+            tool_start("a", "bash", "2026-01-01T10:01:00Z"),
+            tool_start("b", "bash", "2026-01-01T10:02:00Z"),
+            tool_failure("a"),
+            tool_failure("c"),
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert row["longest_error_streak"] == 1
+
+
+def test_ended_on_error_flags_sessions_abandoned_while_failing(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            tool_start("a", "bash", "2026-01-01T10:01:00Z"),
+            tool_start("b", "bash", "2026-01-01T10:02:00Z"),
+            tool_failure("b"),
+        ],
+        session_id="failing",
+    )
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            tool_start("a", "bash", "2026-01-01T10:01:00Z"),
+            tool_start("b", "bash", "2026-01-01T10:02:00Z"),
+            tool_failure("a"),
+        ],
+        session_id="recovered",
+    )
+    rows = quality_rows(store)
+    assert sorted(row["ended_on_error"] for row in rows) == [False, True]
+
+
+def test_error_fields_are_unavailable_not_zero_for_sessions_with_no_tool_calls(store, tmp_path):
+    import_copilot(store, tmp_path, [priced_usage("a")])
+    (row,) = quality_rows(store)
+    assert (row["tool_calls"], row["longest_error_streak"], row["ended_on_error"]) == (0, None, None)
+
+
+def test_cost_per_active_hour_relates_spend_to_the_time_the_agent_was_actually_working(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [priced_usage("a", timestamp="2026-01-01T10:00:00Z"), tool_start("b", "bash", "2026-01-01T10:30:00Z")],
+    )
+    (row,) = quality_rows(store, idle_minutes=60)
+    assert row["estimated_cost_usd"] == pytest.approx(2.0)
+    assert row["cost_per_active_hour_usd"] == pytest.approx(4.0)
+
+
+def test_cost_per_active_hour_is_unavailable_when_the_session_could_not_be_priced(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            priced_usage("a", model="mystery", timestamp="2026-01-01T10:00:00Z"),
+            tool_start("b", "bash", "2026-01-01T10:30:00Z"),
+        ],
+    )
+    (row,) = quality_rows(store, idle_minutes=60)
+    assert (row["estimated_cost_usd"], row["cost_per_active_hour_usd"]) == (None, None)
+
+
+def test_cost_per_active_hour_is_unavailable_when_no_active_time_was_observed(store, tmp_path):
+    import_copilot(store, tmp_path, [priced_usage("a")])
+    (row,) = quality_rows(store)
+    assert row["estimated_cost_usd"] == pytest.approx(2.0)
+    assert row["cost_per_active_hour_usd"] is None
+
+
+def test_rows_name_the_project_and_a_short_session_id_and_never_a_quality_score(store, tmp_path):
+    import_copilot(store, tmp_path, [tool_start("a", "bash")], cwd="/work/app")
+    result = session_quality(store, prices=PRICES, zone="UTC")
+    (row,) = result["rows"]
+    assert row["project"].startswith("app (") and len(row["session"]) == 6
+    assert not [column for column in result["columns"] if "score" in column]
+    assert any("estimate" in note.lower() for note in result["notes"])

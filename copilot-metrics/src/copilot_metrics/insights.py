@@ -1,5 +1,6 @@
 from collections import Counter
 from collections.abc import Callable
+from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -10,6 +11,9 @@ from copilot_metrics.storage import Store
 
 PER_HUNDRED = 100
 SHORT_ID_LENGTH = 6
+DEFAULT_IDLE_MINUTES = 5
+SECONDS_PER_MINUTE = 60
+MINUTES_PER_HOUR = 60
 EXCLUSIVE_INPUT_PROVIDERS = ("claude",)
 FRICTION_SIGNALS = ("tool_error", "approval_request", "clarification_request")
 
@@ -310,3 +314,77 @@ def cost_total(
     unpriced = sorted({f'{event["provider"]}/{event["model"] or "unknown"}' for event, cost in costs if cost is None})
     row = {**cost_cell([cost for _, cost in costs]), "unpriced_models": ", ".join(unpriced)}
     return cost_report(zone, [], [row]) | {"columns": [*COST_COLUMNS, "unpriced_models"]}
+
+
+def active_minutes(events: list[dict[str, Any]], idle_minutes: float) -> float:
+    times = sorted(event["timestamp"] for event in events)
+    gaps = [(later - earlier).total_seconds() for earlier, later in zip(times, times[1:], strict=False)]
+    return sum(gap for gap in gaps if gap <= idle_minutes * SECONDS_PER_MINUTE) / SECONDS_PER_MINUTE
+
+
+def longest_streak(outcomes: list[bool]) -> int:
+    return max((len(list(run)) for failed, run in groupby(outcomes) if failed), default=0)
+
+
+def session_quality_row(
+    key: tuple[str, str], owned: list[dict[str, Any]], *, project: str, prices: Prices, idle_minutes: float
+) -> dict[str, Any]:
+    failed = {event["identity"] for event in owned if event["kind"] == "tool_error"}
+    outcomes = [event["identity"] in failed for event in owned if event["kind"] == "tool_call"]
+    minutes = active_minutes(owned, idle_minutes)
+    cost = cost_cell([cost for _, cost in usage_costs(owned, prices)])["estimated_cost_usd"]
+    hourly = None if cost is None else ratio(cost, minutes / MINUTES_PER_HOUR)
+    return {
+        "provider": key[0],
+        "project": project,
+        "session": key[1][:SHORT_ID_LENGTH],
+        "active_minutes": minutes,
+        "tool_calls": len(outcomes),
+        "tool_errors": sum(outcomes),
+        "longest_error_streak": longest_streak(outcomes) if outcomes else None,
+        "ended_on_error": outcomes[-1] if outcomes else None,
+        "estimated_cost_usd": cost,
+        "cost_per_active_hour_usd": hourly,
+    }
+
+
+def session_quality(
+    store: Store,
+    *,
+    prices: Prices,
+    idle_minutes: float = DEFAULT_IDLE_MINUTES,
+    start: str | None = None,
+    end: str | None = None,
+    provider: str | None = None,
+    zone: str | None = None,
+) -> dict[str, Any]:
+    zone, events = events_of(store, start=start, end=end, provider=provider, zone=zone)
+    projects = session_projects(events)
+    rows = [
+        session_quality_row(key, owned, project=projects[key], prices=prices, idle_minutes=idle_minutes)
+        for key, owned in sorted(events_by_session(events).items())
+    ]
+    return {
+        "timezone": zone,
+        "columns": [
+            "provider",
+            "project",
+            "session",
+            "active_minutes",
+            "tool_calls",
+            "tool_errors",
+            "longest_error_streak",
+            "ended_on_error",
+            "estimated_cost_usd",
+            "cost_per_active_hour_usd",
+        ],
+        "notes": [
+            f"Active minutes is an estimate: gaps between recorded events longer than {idle_minutes:g} minutes "
+            "are treated as idle and excluded. It is not time spent by you or by the agent working.",
+            "Longest error streak is the most consecutive failed tool calls in time order; ended on error means "
+            "the last tool call failed. Both are unavailable for sessions with no tool calls.",
+            "Cost is the per-token estimate from prices.toml; it and cost per active hour are unavailable when "
+            "nothing could be priced or no active time was observed. No combined quality score is computed.",
+        ],
+        "rows": rows,
+    }

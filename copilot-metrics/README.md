@@ -50,6 +50,7 @@ poetry run copilot-metrics report --group-by day --format table
 poetry run copilot-metrics insights tools      # calls, errors and error rate per tool; MCP vs built-in
 poetry run copilot-metrics insights cache      # prompt-cache hit rate per provider and model
 poetry run copilot-metrics insights friction   # errors, approvals, clarifications per 100 tool calls, per project
+poetry run copilot-metrics insights sessions --prices prices.toml      # per-session quality profile
 poetry run copilot-metrics insights cost --prices prices.toml          # by model
 poetry run copilot-metrics insights cost-project --prices prices.toml  # by project
 poetry run copilot-metrics insights cost-day --prices prices.toml      # by local day, providers combined
@@ -59,6 +60,13 @@ poetry run copilot-metrics insights cost-total --prices prices.toml    # headlin
 All accept `--provider`, `--from`, `--to`, `--timezone` and `--format table|json|csv`.
 Cache rate is `read / (input + read + write)` for Claude, whose input excludes cache, and
 `read / input` for Copilot and Codex, whose input includes it. Friction signals stay separate.
+
+`sessions` gives one row per session: estimated active minutes, tool calls and errors, the longest run of
+consecutive failed tool calls, whether the session ended on a failed call, estimated cost, and cost per active
+hour. Active minutes is an estimate: gaps between recorded events longer than `--idle-minutes` (default 5) are
+treated as idle. Error fields are unavailable for sessions with no tool calls, cost per active hour when nothing
+could be priced or no active time was observed. No combined quality score is computed. It appears as **Session
+quality** on the **Work patterns** tab.
 
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
 directory); it is not your bill, and Copilot actually bills by premium request. Key each model

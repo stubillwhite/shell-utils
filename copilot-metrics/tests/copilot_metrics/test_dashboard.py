@@ -319,3 +319,14 @@ def test_daily_cost_chart_plots_priced_days_and_cost_by_project_has_downloads(tm
     assert any('"estimated_cost_usd"' in json.dumps(call.args[0].to_dict()) for call in charts.call_args_list)
     labels = {button.proto.label for button in app.get("download_button")}
     assert {"Download cost by project CSV", "Download cost by project JSON"} <= labels
+
+
+def test_work_patterns_tab_lists_session_quality_with_downloads(tmp_path):
+    app = start(work_pattern_database(tmp_path))
+    assert not app.exception
+    sessions = frame_with(app, "longest_error_streak")
+    assert list(sessions["tool_errors"]) == [1] and list(sessions["longest_error_streak"]) == [1]
+    assert {button.proto.label for button in app.get("download_button")} >= {
+        "Download session quality CSV",
+        "Download session quality JSON",
+    }

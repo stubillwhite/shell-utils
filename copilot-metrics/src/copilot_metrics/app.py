@@ -14,12 +14,14 @@ from copilot_metrics.collectors import opaque
 from copilot_metrics.dashboard_launcher import launch
 from copilot_metrics.hook_installation import HookInstallError, install_hooks
 from copilot_metrics.insights import (
+    DEFAULT_IDLE_MINUTES,
     cache_efficiency,
     cost_by_day,
     cost_by_model,
     cost_by_project,
     cost_total,
     project_friction,
+    session_quality,
     tool_profile,
 )
 from copilot_metrics.interruptions import hook_config, record_hook
@@ -50,6 +52,7 @@ INSIGHT_TOPICS: dict[str, Callable[..., dict[str, Any]]] = {
     "tools": tool_profile,
     "cache": cache_efficiency,
     "friction": project_friction,
+    "sessions": session_quality,
     "cost": cost_by_model,
     "cost-project": cost_by_project,
     "cost-day": cost_by_day,
@@ -88,6 +91,12 @@ def parser() -> argparse.ArgumentParser:
     insights.add_argument("--to", dest="end")
     insights.add_argument("--timezone", dest="zone")
     insights.add_argument("--prices", type=Path, default=Path("prices.toml"), help="Per-million-token rates (cost).")
+    insights.add_argument(
+        "--idle-minutes",
+        type=float,
+        default=DEFAULT_IDLE_MINUTES,
+        help="Sessions topic: gaps longer than this are idle, not active time.",
+    )
     insights.add_argument("--format", choices=("table", "json", "csv"), default="table")
     for command in ("record-interruption", "interruption-hooks"):
         sub = commands.add_parser(command)
@@ -123,7 +132,14 @@ def execute(args: argparse.Namespace) -> int:
     if args.command == "dashboard":
         return launch(args.db)
     if args.command == "insights":
-        extra = {"prices": load_prices(args.prices)} if args.topic.startswith("cost") else {}
+        extra = {
+            **(
+                {"prices": load_prices(args.prices)}
+                if args.topic.startswith("cost") or args.topic == "sessions"
+                else {}
+            ),
+            **({"idle_minutes": args.idle_minutes} if args.topic == "sessions" else {}),
+        }
         with Store(args.db, read_only=True) as store:
             result = INSIGHT_TOPICS[args.topic](
                 store, start=args.start, end=args.end, provider=args.provider, zone=args.zone, **extra

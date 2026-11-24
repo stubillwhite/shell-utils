@@ -324,6 +324,7 @@ WORK_PATTERN_SECTIONS = (
     ("tools", "Tool profile", "tool profile", "work_tools"),
     ("cache", "Prompt-cache efficiency", "cache efficiency", "work_cache"),
     ("friction", "Project friction", "project friction", "work_friction"),
+    ("sessions", "Session quality", "session quality", "work_sessions"),
     ("cost", "Estimated cost", "estimated cost", "work_cost"),
 )
 
