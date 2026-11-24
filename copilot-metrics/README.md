@@ -65,7 +65,14 @@ Cache rate is `read / (input + read + write)` for Claude, whose input excludes c
 consecutive failed tool calls, whether the session ended on a failed call, estimated cost, and cost per active
 hour. Active minutes is an estimate: gaps between recorded events longer than `--idle-minutes` (default 5) are
 treated as idle. Error fields are unavailable for sessions with no tool calls, cost per active hour when nothing
-could be priced or no active time was observed. No combined quality score is computed. It appears as **Session
+could be priced or no active time was observed. No combined quality score is computed.
+
+Steering counts sit beside them: `user_messages` (prompts you typed; memory, autopilot, system and subagent
+messages are excluded), `aborts` (you interrupted the agent), `permission_denials` (requests you refused
+yourself; rule-based and unattended denials are excluded) and `compactions` (successful context compactions).
+Only structured fields are read, never prompt or feedback text. A count is unavailable, not zero, where the
+provider does not record the signal: Claude aborts and compactions, and all four for Codex. These counts are
+new in collector revision 5, so run `make run-import` once to add them to history imported earlier. It appears as **Session
 quality** on the **Work patterns** tab.
 
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working

@@ -13,7 +13,7 @@ from copilot_metrics.models import (
     Metric,
 )
 
-COLLECTOR_REVISION = "4"
+COLLECTOR_REVISION = "5"
 
 
 def object_value(value: object) -> dict[str, Any]:
@@ -33,6 +33,29 @@ def usage_values(usage: dict[str, Any], names: tuple[str, ...]) -> dict[str, int
     if not any(value is not None for value in values):
         raise ValueError("usage_unavailable")
     return dict(zip(TOKEN_FIELDS, values, strict=True))
+
+
+def is_typed_claude_prompt(record: dict[str, Any], message: dict[str, Any], *, child: bool) -> bool:
+    return (
+        record.get("type") == "user"
+        and isinstance(message.get("content"), str)
+        and not child
+        and not record.get("isMeta")
+        and object_value(record.get("origin")).get("kind", "human") == "human"
+    )
+
+
+def is_copilot_user_refusal(data: dict[str, Any]) -> bool:
+    return object_value(data.get("result")).get("kind") == "denied-interactively-by-user"
+
+
+def is_claude_user_refusal(record: dict[str, Any]) -> bool:
+    decision = object_value(record.get("permissionDecision"))
+    return decision.get("decision") == "reject" and decision.get("source") == "user_reject"
+
+
+def is_copilot_compaction(data: dict[str, Any]) -> bool:
+    return data.get("success") is True or data.get("outcome") == "applied"
 
 
 def collect(provider: str, path: Path) -> Collection:
@@ -177,6 +200,14 @@ def collect(provider: str, path: Path) -> Collection:
                         emit("clarification_request", key)
                 if kind == "tool.execution_complete" and data.get("success") is False:
                     emit("tool_error", str(data.get("toolCallId") or identity))
+                if kind == "user.message" and data.get("source") == "user":
+                    emit("user_message")
+                if kind == "abort":
+                    emit("abort")
+                if kind == "permission.completed" and is_copilot_user_refusal(data):
+                    emit("permission_denied", str(data.get("requestId") or identity))
+                if kind == "session.compaction_complete" and is_copilot_compaction(data):
+                    emit("compaction")
             elif provider == "claude":
                 key = str(message.get("id") or identity)
                 if kind == "assistant" and isinstance(message.get("usage"), dict):
@@ -195,6 +226,10 @@ def collect(provider: str, path: Path) -> Collection:
                             ),
                         ),
                     )
+                if is_typed_claude_prompt(record, message, child=child):
+                    emit("user_message")
+                if is_claude_user_refusal(record):
+                    emit("permission_denied")
                 blocks = message.get("content")
                 for block in blocks if isinstance(blocks, list) else []:
                     if not isinstance(block, dict):

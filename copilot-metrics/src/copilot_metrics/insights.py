@@ -15,6 +15,12 @@ DEFAULT_IDLE_MINUTES = 5
 SECONDS_PER_MINUTE = 60
 MINUTES_PER_HOUR = 60
 EXCLUSIVE_INPUT_PROVIDERS = ("claude",)
+STEERING_SIGNAL_PROVIDERS = {
+    "user_message": ("copilot", "claude"),
+    "abort": ("copilot",),
+    "permission_denied": ("copilot", "claude"),
+    "compaction": ("copilot",),
+}
 FRICTION_SIGNALS = ("tool_error", "approval_request", "clarification_request")
 
 
@@ -326,6 +332,12 @@ def longest_streak(outcomes: list[bool]) -> int:
     return max((len(list(run)) for failed, run in groupby(outcomes) if failed), default=0)
 
 
+def steering_count(provider: str, owned: list[dict[str, Any]], kind: str) -> int | None:
+    if provider not in STEERING_SIGNAL_PROVIDERS[kind]:
+        return None
+    return sum(1 for event in owned if event["kind"] == kind)
+
+
 def session_quality_row(
     key: tuple[str, str], owned: list[dict[str, Any]], *, project: str, prices: Prices, idle_minutes: float
 ) -> dict[str, Any]:
@@ -343,6 +355,10 @@ def session_quality_row(
         "tool_errors": sum(outcomes),
         "longest_error_streak": longest_streak(outcomes) if outcomes else None,
         "ended_on_error": outcomes[-1] if outcomes else None,
+        "user_messages": steering_count(key[0], owned, "user_message"),
+        "aborts": steering_count(key[0], owned, "abort"),
+        "permission_denials": steering_count(key[0], owned, "permission_denied"),
+        "compactions": steering_count(key[0], owned, "compaction"),
         "estimated_cost_usd": cost,
         "cost_per_active_hour_usd": hourly,
     }
@@ -375,6 +391,10 @@ def session_quality(
             "tool_errors",
             "longest_error_streak",
             "ended_on_error",
+            "user_messages",
+            "aborts",
+            "permission_denials",
+            "compactions",
             "estimated_cost_usd",
             "cost_per_active_hour_usd",
         ],
@@ -383,6 +403,10 @@ def session_quality(
             "are treated as idle and excluded. It is not time spent by you or by the agent working.",
             "Longest error streak is the most consecutive failed tool calls in time order; ended on error means "
             "the last tool call failed. Both are unavailable for sessions with no tool calls.",
+            "User messages are prompts you typed, aborts are user interruptions, denials are permission requests you "
+            "refused yourself (automatic or rule-based denials are excluded), compactions are successful context compactions. A signal is unavailable for providers that "
+            "do not record it (Claude aborts and compactions; all four for Codex), never zero. Reimport after "
+            "upgrading so earlier sessions gain these counts.",
             "Cost is the per-token estimate from prices.toml; it and cost per active hour are unavailable when "
             "nothing could be priced or no active time was observed. No combined quality score is computed.",
         ],

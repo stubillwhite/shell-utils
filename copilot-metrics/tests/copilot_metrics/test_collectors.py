@@ -257,3 +257,114 @@ def test_projects_use_recorded_cwd_without_persisting_full_paths(tmp_path, provi
     assert usage.project == "app"
     assert usage.project_id
     assert cwd not in repr(result)
+
+
+def kinds_of(result, kind):
+    return [item for item in result.events if item.kind == kind]
+
+
+def copilot_session(tmp_path, records):
+    return collect("copilot", write_records(tmp_path, [event("session.start", {"sessionId": "s"}, "start"), *records]))
+
+
+def test_copilot_user_messages_count_only_prompts_the_user_typed_and_never_store_their_text(tmp_path):
+    result = copilot_session(
+        tmp_path,
+        [
+            event("user.message", {"source": "user", "content": "DO NOT STORE"}, "u1"),
+            event("user.message", {"source": "user", "content": "DO NOT STORE"}, "u2"),
+            event("user.message", {"source": "memory", "content": "DO NOT STORE"}, "m"),
+            event("user.message", {"source": "autopilot", "content": "DO NOT STORE"}, "a"),
+            event("user.message", {"source": "system", "content": "DO NOT STORE"}, "y"),
+        ],
+    )
+    assert len(kinds_of(result, "user_message")) == 2
+    assert "DO NOT STORE" not in repr(result)
+
+
+def test_copilot_aborts_are_recorded_so_interrupted_work_is_visible(tmp_path):
+    result = copilot_session(
+        tmp_path, [event("abort", {"reason": "user initiated"}, "x1"), event("abort", {"reason": "user_abort"}, "x2")]
+    )
+    assert len(kinds_of(result, "abort")) == 2
+
+
+def test_copilot_permission_denials_count_only_refusals_by_the_user_and_never_store_feedback(tmp_path):
+    def completed(identity, kind, **result):
+        return event("permission.completed", {"requestId": identity, "result": {"kind": kind, **result}}, identity)
+
+    result = copilot_session(
+        tmp_path,
+        [
+            completed("r1", "approved"),
+            completed("r2", "approved-for-location"),
+            completed("r3", "cancelled", reason="Session aborted"),
+            completed("r4", "denied-interactively-by-user", feedback="DO NOT STORE"),
+            completed("r5", "denied-no-approval-rule-and-could-not-request-from-user"),
+            completed("r6", "denied-by-permission-request-hook"),
+        ],
+    )
+    assert len(kinds_of(result, "permission_denied")) == 1
+    assert "DO NOT STORE" not in repr(result)
+
+
+def test_copilot_compactions_count_successful_completions_not_starts_or_failures(tmp_path):
+    result = copilot_session(
+        tmp_path,
+        [
+            event("session.compaction_start", {"trigger": "auto"}, "c0"),
+            event("session.compaction_complete", {"success": True}, "c1"),
+            event("session.compaction_complete", {"success": False}, "c2"),
+            event("session.compaction_complete", {"outcome": "applied"}, "c3"),
+        ],
+    )
+    assert len(kinds_of(result, "compaction")) == 2
+
+
+def claude_user(identity, content, **fields):
+    return {
+        "type": "user",
+        "uuid": identity,
+        "sessionId": "session",
+        "timestamp": "2026-01-01T10:00:00Z",
+        "message": {"role": "user", "content": content},
+        **fields,
+    }
+
+
+def test_claude_user_messages_count_typed_main_session_prompts_only(tmp_path):
+    result = collect(
+        "claude",
+        write_records(
+            tmp_path,
+            [
+                claude_user("typed", "DO NOT STORE", origin={"kind": "human"}),
+                claude_user("legacy", "DO NOT STORE"),
+                claude_user("meta", "DO NOT STORE", isMeta=True),
+                claude_user("injected", "DO NOT STORE", origin={"kind": "system"}),
+                claude_user("sidechain", "DO NOT STORE", isSidechain=True),
+                claude_user("tool", [{"type": "tool_result", "tool_use_id": "t", "content": "DO NOT STORE"}]),
+            ],
+        ),
+    )
+    assert len(kinds_of(result, "user_message")) == 2
+    assert "DO NOT STORE" not in repr(result)
+
+
+def test_claude_permission_denials_count_only_rejections_by_the_user_not_by_rules(tmp_path):
+    def decided(identity, decision, source="user_reject"):
+        return claude_user(
+            identity,
+            [{"type": "tool_result", "tool_use_id": identity, "content": "DO NOT STORE"}],
+            permissionDecision={"decision": decision, "source": source},
+        )
+
+    result = collect(
+        "claude",
+        write_records(
+            tmp_path,
+            [decided("a", "accept"), decided("r", "reject"), decided("c", "reject", source="config")],
+        ),
+    )
+    assert len(kinds_of(result, "permission_denied")) == 1
+    assert "DO NOT STORE" not in repr(result)

@@ -417,3 +417,44 @@ def test_rows_name_the_project_and_a_short_session_id_and_never_a_quality_score(
     assert row["project"].startswith("app (") and len(row["session"]) == 6
     assert not [column for column in result["columns"] if "score" in column]
     assert any("estimate" in note.lower() for note in result["notes"])
+
+
+def test_session_quality_counts_user_steering_signals_per_session(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            event("user.message", {"source": "user"}, "u1"),
+            event("user.message", {"source": "user"}, "u2"),
+            event("abort", {"reason": "user initiated"}, "x"),
+            event("permission.completed", {"requestId": "r", "result": {"kind": "denied-interactively-by-user"}}, "r"),
+            event("session.compaction_complete", {"success": True}, "c"),
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert (row["user_messages"], row["aborts"], row["permission_denials"], row["compactions"]) == (2, 1, 1, 1)
+
+
+def test_session_quality_reports_zero_when_a_provider_can_observe_the_signal_and_none_occurred(store, tmp_path):
+    import_copilot(store, tmp_path, [tool_start("a", "bash")])
+    (row,) = quality_rows(store)
+    assert (row["user_messages"], row["aborts"], row["permission_denials"], row["compactions"]) == (0, 0, 0, 0)
+
+
+def test_session_quality_marks_signals_unavailable_for_providers_that_cannot_observe_them(store, tmp_path):
+    import_claude(
+        store,
+        tmp_path,
+        [
+            {
+                "type": "user",
+                "uuid": "u",
+                "sessionId": "claude-session",
+                "timestamp": "2026-01-01T12:00:00Z",
+                "message": {"role": "user", "content": "hello"},
+            }
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert row["user_messages"] == 1 and row["permission_denials"] == 0
+    assert row["aborts"] is None and row["compactions"] is None
