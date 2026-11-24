@@ -4,7 +4,7 @@ from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from copilot_metrics.models import TOKEN_FIELDS
+from copilot_metrics.models import PERMISSION_CAUSES, TOKEN_FIELDS
 from copilot_metrics.prices import Prices, estimate_cost
 from copilot_metrics.reports import local_zone, selected_events
 from copilot_metrics.storage import Store
@@ -21,6 +21,7 @@ STEERING_SIGNAL_PROVIDERS = {
     "permission_denied": ("copilot", "claude"),
     "compaction": ("copilot",),
 }
+CAUSE_PROVIDERS = ("copilot", "claude")
 FRICTION_SIGNALS = ("tool_error", "approval_request", "clarification_request")
 
 
@@ -338,11 +339,30 @@ def steering_count(provider: str, owned: list[dict[str, Any]], kind: str) -> int
     return sum(1 for event in owned if event["kind"] == kind)
 
 
+def identical_retries(calls: list[dict[str, Any]], failed: set[str]) -> int:
+    first_failure = {
+        call["signature"]: index for index, call in reversed(list(enumerate(calls))) if call["identity"] in failed
+    }
+    return sum(1 for index, call in enumerate(calls) if first_failure.get(call["signature"], len(calls)) < index)
+
+
+def loop_signals(calls: list[dict[str, Any]], failed: set[str]) -> dict[str, int | None]:
+    signed = [call for call in calls if call["signature"]]
+    if not signed:
+        return {"identical_retries": None, "max_identical_calls": None}
+    return {
+        "identical_retries": identical_retries(signed, failed),
+        "max_identical_calls": max(Counter(call["signature"] for call in signed).values()),
+    }
+
+
 def session_quality_row(
     key: tuple[str, str], owned: list[dict[str, Any]], *, project: str, prices: Prices, idle_minutes: float
 ) -> dict[str, Any]:
-    failed = {event["identity"] for event in owned if event["kind"] == "tool_error"}
-    outcomes = [event["identity"] in failed for event in owned if event["kind"] == "tool_call"]
+    errors = [event for event in owned if event["kind"] == "tool_error"]
+    failed = {event["identity"] for event in errors if event["cause"] not in PERMISSION_CAUSES}
+    calls = [event for event in owned if event["kind"] == "tool_call"]
+    outcomes = [call["identity"] in failed for call in calls]
     minutes = active_minutes(owned, idle_minutes)
     cost = cost_cell([cost for _, cost in usage_costs(owned, prices)])["estimated_cost_usd"]
     hourly = None if cost is None else ratio(cost, minutes / MINUTES_PER_HOUR)
@@ -353,8 +373,12 @@ def session_quality_row(
         "active_minutes": minutes,
         "tool_calls": len(outcomes),
         "tool_errors": sum(outcomes),
+        "tool_denials": (
+            sum(1 for event in errors if event["cause"] in PERMISSION_CAUSES) if key[0] in CAUSE_PROVIDERS else None
+        ),
         "longest_error_streak": longest_streak(outcomes) if outcomes else None,
         "ended_on_error": outcomes[-1] if outcomes else None,
+        **loop_signals(calls, failed),
         "user_messages": steering_count(key[0], owned, "user_message"),
         "aborts": steering_count(key[0], owned, "abort"),
         "permission_denials": steering_count(key[0], owned, "permission_denied"),
@@ -389,8 +413,11 @@ def session_quality(
             "active_minutes",
             "tool_calls",
             "tool_errors",
+            "tool_denials",
             "longest_error_streak",
             "ended_on_error",
+            "identical_retries",
+            "max_identical_calls",
             "user_messages",
             "aborts",
             "permission_denials",
@@ -401,8 +428,12 @@ def session_quality(
         "notes": [
             f"Active minutes is an estimate: gaps between recorded events longer than {idle_minutes:g} minutes "
             "are treated as idle and excluded. It is not time spent by you or by the agent working.",
-            "Longest error streak is the most consecutive failed tool calls in time order; ended on error means "
-            "the last tool call failed. Both are unavailable for sessions with no tool calls.",
+            "Tool errors, longest error streak and ended on error count genuine tool failures only; calls refused by "
+            "permission rules or by you are counted separately as tool denials. Streak is the most consecutive "
+            "failed calls in time order and is unavailable for sessions with no tool calls.",
+            "Identical retries are calls repeating the same tool and arguments as an earlier call that failed; "
+            "max identical calls is the most times one such call appeared. Arguments are compared by one-way hash "
+            "and never stored. Unavailable where arguments are not recorded (Codex).",
             "User messages are prompts you typed, aborts are user interruptions, denials are permission requests you "
             "refused yourself (automatic or rule-based denials are excluded), compactions are successful context compactions. A signal is unavailable for providers that "
             "do not record it (Claude aborts and compactions; all four for Codex), never zero. Reimport after "

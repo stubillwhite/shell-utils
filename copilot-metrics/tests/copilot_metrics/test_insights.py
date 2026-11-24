@@ -458,3 +458,77 @@ def test_session_quality_marks_signals_unavailable_for_providers_that_cannot_obs
     (row,) = quality_rows(store)
     assert row["user_messages"] == 1 and row["permission_denials"] == 0
     assert row["aborts"] is None and row["compactions"] is None
+
+
+def call(identity, tool="bash", arguments=None, minute=0):
+    return event(
+        "tool.execution_start",
+        {"toolName": tool, "toolCallId": identity, "arguments": arguments or {"command": "x"}},
+        "start-" + identity,
+        f"2026-01-01T10:{minute:02d}:00Z",
+    )
+
+
+def failed_with(identity, code):
+    return event(
+        "tool.execution_complete",
+        {"toolCallId": identity, "success": False, "error": {"code": code}},
+        "done-" + identity,
+    )
+
+
+def test_refused_permissions_are_counted_as_denials_not_as_tool_failures(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            call("a", minute=1),
+            call("b", minute=2),
+            call("c", minute=3),
+            failed_with("a", "failure"),
+            failed_with("b", "denied"),
+            failed_with("c", "rejected"),
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert (row["tool_calls"], row["tool_errors"], row["tool_denials"]) == (3, 1, 2)
+    assert (row["longest_error_streak"], row["ended_on_error"]) == (1, False)
+
+
+def test_identical_retries_count_repeats_of_a_call_that_already_failed(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            call("a", arguments={"command": "make test"}, minute=1),
+            failed_with("a", "failure"),
+            call("b", arguments={"command": "make test"}, minute=2),
+            call("c", arguments={"command": "make lint"}, minute=3),
+        ],
+    )
+    (row,) = quality_rows(store)
+    assert (row["identical_retries"], row["max_identical_calls"]) == (1, 2)
+
+
+def test_repeating_a_call_that_succeeded_is_not_a_retry_because_rereading_files_is_normal(store, tmp_path):
+    import_copilot(store, tmp_path, [call("a", minute=1), call("b", minute=2), call("c", minute=3)])
+    (row,) = quality_rows(store)
+    assert (row["identical_retries"], row["max_identical_calls"]) == (0, 3)
+
+
+def test_identical_calls_are_distinguished_by_tool_as_well_as_arguments(store, tmp_path):
+    import_copilot(store, tmp_path, [call("a", tool="bash", minute=1), call("b", tool="view", minute=2)])
+    (row,) = quality_rows(store)
+    assert row["max_identical_calls"] == 1
+
+
+def test_loop_and_denial_columns_are_unavailable_for_providers_without_the_evidence(store, tmp_path):
+    record = {
+        "type": "response_item",
+        "timestamp": "2026-01-01T10:00:00Z",
+        "payload": {"type": "function_call", "call_id": "c", "name": "shell", "arguments": "{}"},
+    }
+    (tmp_path / "codex").mkdir()
+    store.import_file("codex", write_records(tmp_path / "codex", [record]))
+    (row,) = quality_rows(store)
+    assert (row["tool_denials"], row["identical_retries"], row["max_identical_calls"]) == (None, None, None)

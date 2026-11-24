@@ -51,6 +51,8 @@ class Store:
                 DROP VIEW IF EXISTS normalized_events;
                 ALTER TABLE events ADD COLUMN IF NOT EXISTS project_id VARCHAR;
                 ALTER TABLE events ADD COLUMN IF NOT EXISTS project VARCHAR;
+                ALTER TABLE events ADD COLUMN IF NOT EXISTS signature VARCHAR;
+                ALTER TABLE events ADD COLUMN IF NOT EXISTS cause VARCHAR;
                 CREATE VIEW normalized_events AS
                 SELECT events.* FROM events JOIN sources USING (source_id)
                 QUALIFY row_number() OVER (
@@ -96,7 +98,7 @@ class Store:
     def _insert(self: "Store", source_id: str, provider: str, collection: Collection) -> None:
         if collection.events:
             self.connection.executemany(
-                "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [(source_id, provider, *astuple(event)) for event in collection.events],
             )
         if collection.diagnostics:

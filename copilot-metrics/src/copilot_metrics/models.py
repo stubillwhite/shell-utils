@@ -17,6 +17,8 @@ class Metric:
     child: bool = False
     project_id: str | None = None
     project: str | None = None
+    signature: str | None = None
+    cause: str | None = None
 
 
 @dataclass(frozen=True)
@@ -32,4 +34,5 @@ class Collection:
 
 
 PROVIDERS = ("copilot", "codex", "claude")
+PERMISSION_CAUSES = ("denied", "rejected")
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cached_input_tokens", "cache_creation_tokens", "reasoning_tokens")

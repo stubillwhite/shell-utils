@@ -368,3 +368,93 @@ def test_claude_permission_denials_count_only_rejections_by_the_user_not_by_rule
     )
     assert len(kinds_of(result, "permission_denied")) == 1
     assert "DO NOT STORE" not in repr(result)
+
+
+def copilot_call(identity, tool, arguments):
+    return event("tool.execution_start", {"toolName": tool, "toolCallId": identity, "arguments": arguments}, identity)
+
+
+def test_copilot_call_signatures_match_identical_calls_and_never_expose_arguments(tmp_path):
+    secret = {"command": "DO NOT STORE"}
+    result = copilot_session(
+        tmp_path,
+        [
+            copilot_call("a", "bash", secret),
+            copilot_call("b", "bash", dict(reversed(list(secret.items())))),
+            copilot_call("c", "bash", {"command": "other"}),
+            copilot_call("d", "view", secret),
+        ],
+    )
+    signatures = {item.identity: item.signature for item in kinds_of(result, "tool_call")}
+    first, second, different_args, different_tool = signatures.values()
+    assert first == second and len({first, different_args, different_tool}) == 3
+    assert "DO NOT STORE" not in repr(result)
+
+
+def test_copilot_error_causes_separate_real_failures_from_permission_outcomes(tmp_path):
+    def failed(identity, error):
+        return event("tool.execution_complete", {"toolCallId": identity, "success": False, "error": error}, identity)
+
+    result = copilot_session(
+        tmp_path,
+        [
+            failed("f", {"code": "failure", "message": "DO NOT STORE"}),
+            failed("d", {"code": "denied"}),
+            failed("r", {"code": "rejected"}),
+            failed("n", {"message": "no code"}),
+        ],
+    )
+    causes = {item.identity: item.cause for item in kinds_of(result, "tool_error")}
+    assert sorted(causes.values()) == ["denied", "failure", "failure", "rejected"]
+    assert "DO NOT STORE" not in repr(result)
+
+
+def claude_tool_use(identity, name, tool_input):
+    return {
+        "type": "assistant",
+        "uuid": "msg-" + identity,
+        "sessionId": "session",
+        "timestamp": "2026-01-01T10:00:00Z",
+        "message": {
+            "id": "m-" + identity,
+            "content": [{"type": "tool_use", "id": identity, "name": name, "input": tool_input}],
+        },
+    }
+
+
+def test_claude_call_signatures_hash_the_tool_and_input_without_storing_the_input(tmp_path):
+    result = collect(
+        "claude",
+        write_records(
+            tmp_path,
+            [
+                claude_tool_use("a", "Bash", {"command": "DO NOT STORE"}),
+                claude_tool_use("b", "Bash", {"command": "DO NOT STORE"}),
+                claude_tool_use("c", "Bash", {"command": "other"}),
+            ],
+        ),
+    )
+    first, second, third = (item.signature for item in kinds_of(result, "tool_call"))
+    assert first == second != third
+    assert "DO NOT STORE" not in repr(result)
+
+
+def test_claude_error_causes_follow_the_permission_decision_on_the_same_record(tmp_path):
+    def errored(identity, **fields):
+        return claude_user(
+            identity, [{"type": "tool_result", "tool_use_id": identity, "is_error": True, "content": "x"}], **fields
+        )
+
+    result = collect(
+        "claude",
+        write_records(
+            tmp_path,
+            [
+                errored("plain"),
+                errored("user", permissionDecision={"decision": "reject", "source": "user_reject"}),
+                errored("rule", permissionDecision={"decision": "reject", "source": "config"}),
+            ],
+        ),
+    )
+    causes = {item.identity: item.cause for item in kinds_of(result, "tool_error")}
+    assert sorted(causes.values()) == ["denied", "failure", "rejected"]

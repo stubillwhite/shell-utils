@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from copilot_metrics.models import (
+    PERMISSION_CAUSES,
     PROVIDERS,
     TOKEN_FIELDS,
     Collection,
@@ -13,7 +14,7 @@ from copilot_metrics.models import (
     Metric,
 )
 
-COLLECTOR_REVISION = "5"
+COLLECTOR_REVISION = "6"
 
 
 def object_value(value: object) -> dict[str, Any]:
@@ -52,6 +53,22 @@ def is_copilot_user_refusal(data: dict[str, Any]) -> bool:
 def is_claude_user_refusal(record: dict[str, Any]) -> bool:
     decision = object_value(record.get("permissionDecision"))
     return decision.get("decision") == "reject" and decision.get("source") == "user_reject"
+
+
+def call_signature(tool: object, arguments: object) -> str:
+    return opaque(json.dumps({"tool": tool, "arguments": arguments}, sort_keys=True, default=str))
+
+
+def copilot_error_cause(data: dict[str, Any]) -> str:
+    code = object_value(data.get("error")).get("code")
+    return code if code in PERMISSION_CAUSES else "failure"
+
+
+def claude_error_cause(record: dict[str, Any]) -> str:
+    decision = object_value(record.get("permissionDecision"))
+    if decision.get("decision") != "reject":
+        return "failure"
+    return "rejected" if decision.get("source") == "user_reject" else "denied"
 
 
 def is_copilot_compaction(data: dict[str, Any]) -> bool:
@@ -144,6 +161,8 @@ def collect(provider: str, path: Path) -> Collection:
             key: str = identity,
             model: object = None,
             tool: object = None,
+            signature: object = None,
+            cause: object = None,
             **tokens: int | None,
         ) -> None:
             event_key = (session, opaque(key), metric_kind)
@@ -172,6 +191,8 @@ def collect(provider: str, path: Path) -> Collection:
                 child=child,
                 project_id=project_id,
                 project=project,
+                signature=signature if isinstance(signature, str) else None,
+                cause=cause if isinstance(cause, str) else None,
                 **tokens,
             )
             events[event_key] = metric
@@ -195,11 +216,17 @@ def collect(provider: str, path: Path) -> Collection:
                 if kind == "tool.execution_start":
                     tool = data.get("toolName")
                     key = str(data.get("toolCallId") or identity)
-                    emit("tool_call", key, model=data.get("model"), tool=tool)
+                    emit(
+                        "tool_call",
+                        key,
+                        model=data.get("model"),
+                        tool=tool,
+                        signature=call_signature(tool, data.get("arguments")),
+                    )
                     if tool == "ask_user":
                         emit("clarification_request", key)
                 if kind == "tool.execution_complete" and data.get("success") is False:
-                    emit("tool_error", str(data.get("toolCallId") or identity))
+                    emit("tool_error", str(data.get("toolCallId") or identity), cause=copilot_error_cause(data))
                 if kind == "user.message" and data.get("source") == "user":
                     emit("user_message")
                 if kind == "abort":
@@ -236,11 +263,17 @@ def collect(provider: str, path: Path) -> Collection:
                         continue
                     tool_key = str(block.get("id") or block.get("tool_use_id") or identity)
                     if block.get("type") == "tool_use":
-                        emit("tool_call", tool_key, model=message.get("model"), tool=block.get("name"))
+                        emit(
+                            "tool_call",
+                            tool_key,
+                            model=message.get("model"),
+                            tool=block.get("name"),
+                            signature=call_signature(block.get("name"), block.get("input")),
+                        )
                         if block.get("name") == "AskUserQuestion":
                             emit("clarification_request", tool_key)
                     if block.get("type") == "tool_result" and block.get("is_error") is True:
-                        emit("tool_error", tool_key)
+                        emit("tool_error", tool_key, cause=claude_error_cause(record))
             elif kind == "event_msg" and payload.get("type") == "token_count":
                 info = object_value(payload.get("info"))
                 total = object_value(info.get("total_token_usage"))

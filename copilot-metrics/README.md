@@ -72,7 +72,15 @@ messages are excluded), `aborts` (you interrupted the agent), `permission_denial
 yourself; rule-based and unattended denials are excluded) and `compactions` (successful context compactions).
 Only structured fields are read, never prompt or feedback text. A count is unavailable, not zero, where the
 provider does not record the signal: Claude aborts and compactions, and all four for Codex. These counts are
-new in collector revision 5, so run `make run-import` once to add them to history imported earlier. It appears as **Session
+new in collector revision 5, so run `make run-import` once to add them to history imported earlier.
+
+Tool errors in `sessions` count genuine failures only (and so do its error streak and ended-on-error); calls
+refused by a permission rule or by you appear separately as `tool_denials`. Copilot records the cause as
+`error.code`; for Claude, a reject on the same record's `permissionDecision` marks a denial. The `tools` and
+`friction` topics are unchanged and still count every error. Loop signals use a one-way hash of each call's tool and
+arguments (the arguments are never stored): `identical_retries` counts calls repeating an earlier failed call, and
+`max_identical_calls` is the most times one identical call appeared. Both are unavailable for Codex. Causes and
+hashes arrive in collector revision 6, so reimport once more with `make run-import`. It appears as **Session
 quality** on the **Work patterns** tab.
 
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
