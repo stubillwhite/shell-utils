@@ -224,7 +224,17 @@ def test_work_patterns_loader_applies_shared_filters_and_leaves_unpriced_models_
 ):
     before = dashboard_database.read_bytes()
     results = load_work_patterns(dashboard_database, prices=load_prices(tmp_path / "absent.toml"), zone="UTC")
-    assert set(results) == {"tools", "cache", "friction", "sessions", "cost", "cost_total", "cost_project", "cost_day"}
+    assert set(results) == {
+        "tools",
+        "cache",
+        "friction",
+        "sessions",
+        "steering",
+        "cost",
+        "cost_total",
+        "cost_project",
+        "cost_day",
+    }
     copilot = load_work_patterns(dashboard_database, prices={}, provider="copilot", zone="UTC")
     assert {row["model"] for row in copilot["cost"]["rows"]} == {"model-a", "model-b"}
     assert all(row["estimated_cost_usd"] is None for row in copilot["cost"]["rows"])

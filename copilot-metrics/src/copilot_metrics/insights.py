@@ -22,6 +22,7 @@ STEERING_SIGNAL_PROVIDERS = {
     "compaction": ("copilot",),
 }
 CAUSE_PROVIDERS = ("copilot", "claude")
+TRIGGER_COLUMNS = {"abort": "after_abort", "permission_denied": "after_denial", "tool_error": "after_failure"}
 FRICTION_SIGNALS = ("tool_error", "approval_request", "clarification_request")
 
 
@@ -440,6 +441,92 @@ def session_quality(
             "upgrading so earlier sessions gain these counts.",
             "Cost is the per-token estimate from prices.toml; it and cost per active hour are unavailable when "
             "nothing could be priced or no active time was observed. No combined quality score is computed.",
+        ],
+        "rows": rows,
+    }
+
+
+def reacting_to(owned: list[dict[str, Any]], idle_minutes: float) -> list[str | None]:
+    ordered = sorted(owned, key=lambda event: event["timestamp"])
+    prompts = [index for index, event in enumerate(ordered) if event["kind"] == "user_message"]
+    triggers = {
+        index
+        for index, event in enumerate(ordered)
+        if event["kind"] in TRIGGER_COLUMNS
+        and not (event["kind"] == "tool_error" and event["cause"] in PERMISSION_CAUSES)
+    }
+    window = idle_minutes * SECONDS_PER_MINUTE
+
+    def trigger_before(prompt_index: int, previous_prompt_index: int) -> str | None:
+        candidates = [
+            index
+            for index in range(prompt_index - 1, previous_prompt_index, -1)
+            if index in triggers
+            and (ordered[prompt_index]["timestamp"] - ordered[index]["timestamp"]).total_seconds() <= window
+        ]
+        return ordered[candidates[0]]["kind"] if candidates else None
+
+    return [trigger_before(current, previous) for previous, current in zip(prompts, prompts[1:], strict=False)]
+
+
+def steering_row(
+    key: tuple[str, str], owned: list[dict[str, Any]], *, project: str, idle_minutes: float
+) -> dict[str, Any]:
+    provider = key[0]
+    reactions = reacting_to(owned, idle_minutes)
+    observable = provider in STEERING_SIGNAL_PROVIDERS["user_message"]
+    counts = {
+        column: (sum(1 for kind in reactions if kind == trigger) if provider in trigger_providers(trigger) else None)
+        for trigger, column in TRIGGER_COLUMNS.items()
+    }
+    reactive = sum(count for count in counts.values() if count)
+    return {
+        "provider": provider,
+        "project": project,
+        "session": key[1][:SHORT_ID_LENGTH],
+        "follow_up_prompts": len(reactions) if observable else None,
+        **counts,
+        "reactive_share_percent": ratio(PER_HUNDRED * reactive, len(reactions)) if observable else None,
+    }
+
+
+def trigger_providers(trigger: str) -> tuple[str, ...]:
+    return CAUSE_PROVIDERS if trigger == "tool_error" else STEERING_SIGNAL_PROVIDERS[trigger]
+
+
+def steering_follow_ups(
+    store: Store,
+    *,
+    idle_minutes: float = DEFAULT_IDLE_MINUTES,
+    start: str | None = None,
+    end: str | None = None,
+    provider: str | None = None,
+    zone: str | None = None,
+) -> dict[str, Any]:
+    zone, events = events_of(store, start=start, end=end, provider=provider, zone=zone)
+    projects = session_projects(events)
+    rows = [
+        steering_row(key, owned, project=projects[key], idle_minutes=idle_minutes)
+        for key, owned in sorted(events_by_session(events).items())
+    ]
+    return {
+        "timezone": zone,
+        "columns": [
+            "provider",
+            "project",
+            "session",
+            "follow_up_prompts",
+            *TRIGGER_COLUMNS.values(),
+            "reactive_share_percent",
+        ],
+        "notes": [
+            "A follow-up prompt is any prompt after the first in a session. It is attributed to the nearest earlier "
+            f"abort, denial you made, or genuine tool failure within {idle_minutes:g} minutes with no prompt between. "
+            "This is inferred from event order; prompt text is not read, so a reaction is not confirmed.",
+            "Each trigger explains at most one prompt, and permission refusals are not counted as failures. "
+            "Reactive share is the percent of follow-up prompts attributed to a trigger; no combined score is computed.",
+            "A signal is unavailable for providers that do not record it (Claude aborts; all signals for Codex), "
+            "never zero. Reimport after upgrading so earlier sessions gain these counts.",
         ],
         "rows": rows,
     }

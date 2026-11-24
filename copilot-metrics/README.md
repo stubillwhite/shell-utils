@@ -83,6 +83,14 @@ arguments (the arguments are never stored): `identical_retries` counts calls rep
 hashes arrive in collector revision 6, so reimport once more with `make run-import`. It appears as **Session
 quality** on the **Work patterns** tab.
 
+The **Steering** section on that tab (dashboard only) shows, per session, how many follow-up prompts (every prompt
+after the first) came right after a trigger: `after_abort`, `after_denial` (a refusal you made) or `after_failure`
+(a genuine tool failure). A prompt is attributed to the nearest earlier trigger within the 5-minute idle
+window with no prompt in between, so each trigger explains at most one prompt. This is inferred from event
+order alone; prompt text is never read, so a reaction is not confirmed. `reactive_share_percent` is the share of
+follow-up prompts attributed to a trigger. Unavailable signals are blank, not zero. No new import is needed beyond
+collector revision 6.
+
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
 directory); it is not your bill, and Copilot actually bills by premium request. Key each model
 exactly as recorded (Copilot `claude-sonnet-5.5`, Claude `claude-sonnet-5-5`):

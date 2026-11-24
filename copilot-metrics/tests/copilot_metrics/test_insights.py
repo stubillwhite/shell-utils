@@ -8,11 +8,17 @@ from copilot_metrics.insights import (
     cost_total,
     project_friction,
     session_quality,
+    steering_follow_ups,
     tool_profile,
 )
 from copilot_metrics.prices import load_prices
 from copilot_metrics.storage import Store
-from tests.copilot_metrics.test_collectors import event, write_records
+from tests.copilot_metrics.test_collectors import (
+    claude_tool_use,
+    claude_user,
+    event,
+    write_records,
+)
 
 
 def tool_start(identity, tool, timestamp="2026-01-01T10:00:00Z"):
@@ -532,3 +538,134 @@ def test_loop_and_denial_columns_are_unavailable_for_providers_without_the_evide
     store.import_file("codex", write_records(tmp_path / "codex", [record]))
     (row,) = quality_rows(store)
     assert (row["tool_denials"], row["identical_retries"], row["max_identical_calls"]) == (None, None, None)
+
+
+def at(minute, second=0):
+    return f"2026-01-01T10:{minute:02d}:{second:02d}Z"
+
+
+def prompt(identity, minute):
+    return event("user.message", {"source": "user"}, identity, at(minute))
+
+
+def abort_at(minute):
+    return event("abort", {"reason": "user initiated"}, f"abort-{minute}", at(minute))
+
+
+def denial_at(minute):
+    result = {"kind": "denied-interactively-by-user"}
+    return event("permission.completed", {"requestId": f"r{minute}", "result": result}, f"r{minute}", at(minute))
+
+
+def failure_at(identity, minute, second=0, **fields):
+    data = {"toolCallId": identity, "success": False, **fields}
+    return event("tool.execution_complete", data, "done-" + identity, at(minute, second))
+
+
+def steering_rows(store, **options):
+    return steering_follow_ups(store, zone="UTC", **options)["rows"]
+
+
+def follow_up_counts(row):
+    return (row["follow_up_prompts"], row["after_abort"], row["after_denial"], row["after_failure"])
+
+
+def test_steering_attributes_each_follow_up_prompt_to_the_trigger_that_preceded_it(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            prompt("p0", 0),
+            abort_at(1),
+            prompt("p1", 2),
+            denial_at(3),
+            prompt("p2", 4),
+            tool_start("a", "bash", at(5)),
+            failure_at("a", 5),
+            prompt("p3", 6),
+        ],
+    )
+    (row,) = steering_rows(store)
+    assert follow_up_counts(row) == (3, 1, 1, 1)
+    assert row["reactive_share_percent"] == 100
+
+
+def test_steering_ignores_the_first_prompt_and_prompts_that_follow_ordinary_work(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [prompt("p0", 0), tool_start("a", "bash", at(1)), prompt("p1", 2), prompt("p2", 3)],
+    )
+    (row,) = steering_rows(store)
+    assert follow_up_counts(row) == (2, 0, 0, 0)
+    assert row["reactive_share_percent"] == 0
+
+
+def test_steering_does_not_blame_a_trigger_for_a_prompt_sent_after_the_idle_window(store, tmp_path):
+    import_copilot(store, tmp_path, [prompt("p0", 0), abort_at(1), prompt("p1", 20)])
+    assert follow_up_counts(steering_rows(store)[0]) == (1, 0, 0, 0)
+    assert follow_up_counts(steering_rows(store, idle_minutes=30)[0]) == (1, 1, 0, 0)
+
+
+def test_steering_counts_a_trigger_once_even_when_several_prompts_follow_it(store, tmp_path):
+    import_copilot(store, tmp_path, [prompt("p0", 0), abort_at(1), prompt("p1", 2), prompt("p2", 3)])
+    assert follow_up_counts(steering_rows(store)[0]) == (2, 1, 0, 0)
+
+
+def test_steering_still_attributes_a_prompt_to_a_trigger_when_other_events_came_between(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [prompt("p0", 0), abort_at(1), tool_start("a", "bash", at(2)), copilot_usage("u", at(3)), prompt("p1", 4)],
+    )
+    assert follow_up_counts(steering_rows(store)[0]) == (1, 1, 0, 0)
+
+
+def test_steering_does_not_treat_a_user_refusal_as_a_tool_failure(store, tmp_path):
+    import_copilot(
+        store,
+        tmp_path,
+        [
+            prompt("p0", 0),
+            tool_start("a", "bash", at(1)),
+            denial_at(1),
+            failure_at("a", 1, 30, error={"code": "rejected"}),
+            prompt("p1", 2),
+        ],
+    )
+    assert follow_up_counts(steering_rows(store)[0]) == (1, 0, 1, 0)
+
+
+def test_steering_marks_signals_unavailable_for_providers_that_cannot_observe_them(store, tmp_path):
+    def stamped(record, minute):
+        return {**record, "sessionId": "claude-session", "timestamp": at(minute)}
+
+    import_claude(
+        store,
+        tmp_path,
+        [
+            stamped(claude_user("p0", "hello"), 0),
+            stamped(claude_tool_use("a", "Bash", {"command": "x"}), 1),
+            stamped(
+                claude_user("e", [{"type": "tool_result", "tool_use_id": "a", "is_error": True, "content": "x"}]), 2
+            ),
+            stamped(claude_user("p1", "try again"), 3),
+        ],
+    )
+    (row,) = steering_rows(store)
+    assert follow_up_counts(row) == (1, None, 0, 1)
+    assert row["reactive_share_percent"] == 100
+
+
+def test_steering_reports_no_share_when_a_session_has_no_follow_up_prompts(store, tmp_path):
+    import_copilot(store, tmp_path, [tool_start("a", "bash", at(1))])
+    (row,) = steering_rows(store)
+    assert follow_up_counts(row) == (0, 0, 0, 0)
+    assert row["reactive_share_percent"] is None
+
+
+def test_steering_explains_its_inference_and_computes_no_score(store, tmp_path):
+    import_copilot(store, tmp_path, [prompt("p0", 0)])
+    result = steering_follow_ups(store, zone="UTC")
+    assert not [column for column in result["columns"] if "score" in column]
+    assert any("not read" in note.lower() for note in result["notes"])

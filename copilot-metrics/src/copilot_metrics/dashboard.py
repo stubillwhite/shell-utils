@@ -325,6 +325,7 @@ WORK_PATTERN_SECTIONS = (
     ("cache", "Prompt-cache efficiency", "cache efficiency", "work_cache"),
     ("friction", "Project friction", "project friction", "work_friction"),
     ("sessions", "Session quality", "session quality", "work_sessions"),
+    ("steering", "Steering", "steering", "work_steering"),
     ("cost", "Estimated cost", "estimated cost", "work_cost"),
 )
 

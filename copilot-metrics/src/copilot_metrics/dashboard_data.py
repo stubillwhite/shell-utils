@@ -9,6 +9,7 @@ from copilot_metrics.insights import (
     cost_total,
     project_friction,
     session_quality,
+    steering_follow_ups,
     tool_profile,
 )
 from copilot_metrics.models import TOKEN_FIELDS
@@ -89,6 +90,7 @@ def load_work_patterns(
             "cache": cache_efficiency(store, **filters),
             "friction": project_friction(store, **filters),
             "sessions": session_quality(store, prices=prices, start=start, end=end, provider=provider, zone=zone),
+            "steering": steering_follow_ups(store, start=start, end=end, provider=provider, zone=zone),
             "cost": cost_by_model(store, prices=prices, **filters),
             "cost_total": cost_total(store, prices=prices, **filters),
             "cost_project": cost_by_project(store, prices=prices, **filters),
