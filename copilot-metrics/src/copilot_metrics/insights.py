@@ -5,6 +5,7 @@ from itertools import groupby
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from copilot_metrics.git_history import MAX_HUNKS_PER_COMMIT, REWORK_DAYS
 from copilot_metrics.models import PERMISSION_CAUSES, TOKEN_FIELDS
 from copilot_metrics.prices import Prices, estimate_cost
 from copilot_metrics.reports import local_zone, selected_events, session_spans
@@ -358,31 +359,53 @@ def loop_signals(calls: list[dict[str, Any]], failed: set[str]) -> dict[str, int
     }
 
 
-GIT_UNAVAILABLE: dict[str, int | None] = {"commits": None, "lines_added": None, "lines_deleted": None}
+GIT_COLUMNS = ("commits", "lines_added", "lines_deleted", "commits_fixed", "rework_lines")
+GIT_UNAVAILABLE: dict[str, int | None] = {column: None for column in GIT_COLUMNS}
+DEFAULT_FIX_HOURS = 24
+SECONDS_PER_HOUR = 3600
+
+
+def rework_edges(store: Store) -> dict[tuple[str, str], list[tuple[datetime, int]]]:
+    if not store.has_table("git_rework"):
+        return {}
+    edges: dict[tuple[str, str], list[tuple[datetime, int]]] = {}
+    for repo, origin, committed_at, lines in store.connection.execute(
+        "SELECT repo, origin_sha, committed_at, lines FROM git_rework"
+    ).fetchall():
+        edges.setdefault((repo, origin), []).append((datetime.fromisoformat(committed_at), lines))
+    return edges
 
 
 def git_credit(
-    store: Store, spans: dict[tuple[str, str], tuple[datetime, datetime]], idle_minutes: float
+    store: Store,
+    spans: dict[tuple[str, str], tuple[datetime, datetime]],
+    *,
+    idle_minutes: float,
+    fix_hours: float,
 ) -> dict[str, dict[str, int]]:
     if not store.git_enabled() or not store.has_table("git_commits"):
         return {}
     located = store.connection.execute(
-        "SELECT DISTINCT d.session, c.sha, c.committed_at, c.added, c.deleted "
+        "SELECT DISTINCT d.session, d.repo, c.sha, c.committed_at, c.added, c.deleted "
         "FROM git_session_dirs d LEFT JOIN git_commits c USING (repo) WHERE d.repo IS NOT NULL"
     ).fetchall()
+    edges = rework_edges(store)
     windows = {session: (low, high + timedelta(minutes=idle_minutes)) for (_, session), (low, high) in spans.items()}
-    credit: dict[str, dict[str, int]] = {
-        session: {"commits": 0, "lines_added": 0, "lines_deleted": 0} for session, *_ in located
-    }
-    for session, sha, committed_at, added, deleted in located:
+    credit: dict[str, dict[str, int]] = {session: dict.fromkeys(GIT_COLUMNS, 0) for session, *_ in located}
+    for session, repo, sha, committed_at, added, deleted in located:
         low, high = windows.get(session, (None, None))
         if sha is None or low is None or high is None or not low <= datetime.fromisoformat(committed_at) <= high:
             continue
+        made = datetime.fromisoformat(committed_at)
+        rewrites = edges.get((repo, sha), [])
         total = credit[session]
         credit[session] = {
             "commits": total["commits"] + 1,
             "lines_added": total["lines_added"] + added,
             "lines_deleted": total["lines_deleted"] + deleted,
+            "commits_fixed": total["commits_fixed"]
+            + any((when - made).total_seconds() <= fix_hours * SECONDS_PER_HOUR for when, _ in rewrites),
+            "rework_lines": total["rework_lines"] + sum(lines for _, lines in rewrites),
         }
     return credit
 
@@ -423,6 +446,7 @@ def session_quality_row(
         "estimated_cost_usd": cost,
         "cost_per_active_hour_usd": hourly,
         **(GIT_UNAVAILABLE if credit is None else credit),
+        "rework_pct": None if credit is None else ratio(credit["rework_lines"] * PER_HUNDRED, credit["lines_added"]),
         "cost_per_commit_usd": None if credit is None or cost is None else ratio(cost, credit["commits"]),
     }
 
@@ -432,6 +456,7 @@ def session_quality(
     *,
     prices: Prices,
     idle_minutes: float = DEFAULT_IDLE_MINUTES,
+    fix_hours: float = DEFAULT_FIX_HOURS,
     start: str | None = None,
     end: str | None = None,
     provider: str | None = None,
@@ -439,7 +464,7 @@ def session_quality(
 ) -> dict[str, Any]:
     zone, events = events_of(store, start=start, end=end, provider=provider, zone=zone)
     projects = session_projects(events)
-    credits = git_credit(store, session_spans(events), idle_minutes)
+    credits = git_credit(store, session_spans(events), idle_minutes=idle_minutes, fix_hours=fix_hours)
     rows = [
         session_quality_row(
             key,
@@ -475,6 +500,9 @@ def session_quality(
             "lines_added",
             "lines_deleted",
             "cost_per_commit_usd",
+            "commits_fixed",
+            "rework_lines",
+            "rework_pct",
         ],
         "notes": [
             f"Active minutes is an estimate: gaps between recorded events longer than {idle_minutes:g} minutes "
@@ -496,6 +524,11 @@ def session_quality(
             "not additive. Git columns are unavailable unless Git is enabled and the session's folder is a "
             "repository that still exists; run an import after enabling. Cost per commit is unavailable with no "
             "commits.",
+            f"Commits fixed counts a session's commits whose lines a later commit of yours rewrote or deleted within "
+            f"{fix_hours:g} hours. Rework lines are lines from the session's commits that any later commit of yours "
+            f"rewrote or deleted within {REWORK_DAYS} days, and rework percent is rework lines over lines added. "
+            f"Only your own commits count as rewrites. Rewrites in a commit with more than {MAX_HUNKS_PER_COMMIT} "
+            "changed hunks are undercounted, and squash or rebase replaces commit ids so earlier work can be missed.",
         ],
         "rows": rows,
     }

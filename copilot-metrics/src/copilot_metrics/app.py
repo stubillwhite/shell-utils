@@ -14,6 +14,7 @@ from copilot_metrics.collectors import opaque
 from copilot_metrics.dashboard_launcher import launch
 from copilot_metrics.hook_installation import HookInstallError, install_hooks
 from copilot_metrics.insights import (
+    DEFAULT_FIX_HOURS,
     DEFAULT_IDLE_MINUTES,
     cache_efficiency,
     cost_by_day,
@@ -97,6 +98,12 @@ def parser() -> argparse.ArgumentParser:
         default=DEFAULT_IDLE_MINUTES,
         help="Sessions topic: gaps longer than this are idle, not active time.",
     )
+    insights.add_argument(
+        "--fix-hours",
+        type=float,
+        default=DEFAULT_FIX_HOURS,
+        help="Sessions topic: a commit counts as fixed if a later own commit rewrites it within this many hours.",
+    )
     insights.add_argument("--format", choices=("table", "json", "csv"), default="table")
     for command in ("record-interruption", "interruption-hooks"):
         sub = commands.add_parser(command)
@@ -150,7 +157,7 @@ def execute(args: argparse.Namespace) -> int:
                 if args.topic.startswith("cost") or args.topic == "sessions"
                 else {}
             ),
-            **({"idle_minutes": args.idle_minutes} if args.topic == "sessions" else {}),
+            **({"idle_minutes": args.idle_minutes, "fix_hours": args.fix_hours} if args.topic == "sessions" else {}),
         }
         with Store(args.db, read_only=True) as store:
             result = INSIGHT_TOPICS[args.topic](

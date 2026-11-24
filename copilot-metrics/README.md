@@ -102,6 +102,15 @@ uses the default 5 minutes). Overlapping sessions in one repository each count t
 additive. These columns are blank, not zero, when Git is off, the folder is not a repository or no longer exists,
 or no directory was recorded.
 
+Rework: during the same sync, `import` also finds your own later commits that rewrote or deleted lines a session's
+commit added, using `git diff` and `git blame` and storing only short SHAs, line counts and times in `git_rework`
+(no paths or messages). `sessions` adds `commits_fixed` (commits rewritten within `--fix-hours`, default 24, applied
+at report time), `rework_lines` (lines rewritten within 14 days, charged to the session that made the original
+commit even when a later session made the fix) and `rework_pct` (rework lines over `lines_added`, blank with no added
+lines). Only your own commits count as rewrites. Rewrites in a commit with more than 200 changed hunks are
+undercounted, and squash or rebase replaces commit ids, so earlier work can be missed. Blank, not zero, when Git is
+off.
+
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
 directory); it is not your bill, and Copilot actually bills by premium request. Key each model
 exactly as recorded (Copilot `claude-sonnet-5.5`, Claude `claude-sonnet-5-5`):

@@ -33,3 +33,13 @@ def test_insights_sessions_honours_the_idle_threshold_option(tmp_path, monkeypat
     assert code == 0
     assert json.loads(default_output)["rows"][0]["active_minutes"] == 0.0
     assert json.loads(patient_output)["rows"][0]["active_minutes"] == 31.0
+
+
+def test_insights_sessions_accepts_a_fix_hours_option_and_reports_it_in_the_notes(tmp_path, monkeypatch, capsys):
+    database = tmp_path / "metrics.duckdb"
+    with Store(database):
+        pass
+    args = ["insights", "sessions", "--db", str(database), "--timezone", "UTC", "--format", "json"]
+    code, output = run_cli(monkeypatch, capsys, *args, "--fix-hours", "6")
+    assert code == 0
+    assert any("within 6 hours" in note for note in json.loads(output)["notes"])

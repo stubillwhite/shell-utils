@@ -2,14 +2,19 @@ import subprocess
 
 import pytest
 
+from copilot_metrics.git_history import MAX_HUNKS_PER_COMMIT
+from copilot_metrics.insights import session_quality
 from copilot_metrics.storage import Store
+from tests.copilot_metrics.test_collectors import event, write_records
 from tests.copilot_metrics.test_git_history import (
     ME,
     git,
     import_copilot,
     make_repo,
+    quality,
     session_records,
 )
+from tests.copilot_metrics.test_insights import tool_start
 
 FIRST = "2026-01-01T10:02:00Z"
 
@@ -140,3 +145,72 @@ def test_disabling_git_purges_rework_edges(store, tmp_path, repo):
     assert store.connection.execute(
         "SELECT count(*) FROM information_schema.tables WHERE table_name = 'git_rework'"
     ).fetchone() == (0,)
+
+
+def test_rework_lines_and_share_are_credited_to_the_session_that_made_the_original_commit(store, tmp_path, repo):
+    start_session(store, tmp_path, repo)
+    write_commit(repo, "a.txt", ["a", "b", "c", "d"], FIRST)
+    write_commit(repo, "a.txt", ["a", "B", "C", "d"], "2026-01-05T09:00:00Z")
+    (row,) = quality(store)
+    assert (row["lines_added"], row["rework_lines"], row["rework_pct"]) == (4, 2, 50.0)
+
+
+def test_commits_fixed_counts_session_commits_rewritten_within_the_fix_window_only(store, tmp_path, repo):
+    start_session(store, tmp_path, repo)
+    write_commit(repo, "a.txt", ["a", "b"], FIRST)
+    write_commit(repo, "b.txt", ["a", "b"], "2026-01-01T10:03:00Z")
+    write_commit(repo, "a.txt", ["x", "y"], "2026-01-02T09:00:00Z")
+    write_commit(repo, "b.txt", ["x", "y"], "2026-01-05T09:00:00Z")
+    (row,) = quality(store)
+    assert (row["commits_fixed"], row["rework_lines"]) == (1, 4)
+
+
+def test_the_fix_window_is_configurable_in_hours(store, tmp_path, repo):
+    start_session(store, tmp_path, repo)
+    write_commit(repo, "a.txt", ["a", "b"], FIRST)
+    write_commit(repo, "a.txt", ["x", "y"], "2026-01-02T09:00:00Z")
+    store.sync_git(idle_minutes=5)
+    rows = lambda hours: session_quality(store, prices={}, zone="UTC", fix_hours=hours)["rows"]  # noqa: E731
+    assert (rows(1)[0]["commits_fixed"], rows(24)[0]["commits_fixed"]) == (0, 1)
+
+
+def test_a_session_with_commits_but_no_rewrites_reports_zero_rework_not_unavailable(store, tmp_path, repo):
+    start_session(store, tmp_path, repo)
+    write_commit(repo, "a.txt", ["a", "b"], FIRST)
+    (row,) = quality(store)
+    assert (row["commits_fixed"], row["rework_lines"], row["rework_pct"]) == (0, 0, 0.0)
+
+
+def test_rework_share_is_unavailable_with_no_added_lines_and_all_rework_columns_when_git_is_off(store, tmp_path, repo):
+    import_copilot(store, tmp_path, session_records(0, 4), cwd=str(repo))
+    (off,) = quality(store)
+    assert (off["commits_fixed"], off["rework_lines"], off["rework_pct"]) == (None,) * 3
+    store.set_git_enabled(True)
+    import_copilot(store, tmp_path, session_records(0, 4), cwd=str(repo))
+    (empty,) = quality(store)
+    assert (empty["commits_fixed"], empty["rework_lines"], empty["rework_pct"]) == (0, 0, None)
+
+
+def test_a_rewrite_made_in_a_later_session_is_still_charged_to_the_original_session(store, tmp_path, repo):
+    start_session(store, tmp_path, repo)
+    write_commit(repo, "a.txt", ["a", "b"], FIRST)
+    folder = tmp_path / "later"
+    folder.mkdir()
+    next_day = [
+        event(
+            "session.start",
+            {"sessionId": "later", "context": {"cwd": str(repo)}},
+            "later-start",
+            "2026-01-02T10:00:00Z",
+        ),
+        tool_start("n1", "bash", "2026-01-02T10:04:00Z"),
+    ]
+    store.import_file("copilot", write_records(folder, next_day))
+    write_commit(repo, "a.txt", ["x", "y"], "2026-01-02T10:02:00Z")
+    original, later = quality(store)
+    assert (original["rework_lines"], later["rework_lines"], later["commits"]) == (2, 0, 1)
+
+
+def test_the_sessions_note_warns_that_very_large_rewrites_are_undercounted(store):
+    notes = " ".join(session_quality(store, prices={}, zone="UTC")["notes"])
+    assert str(MAX_HUNKS_PER_COMMIT) in notes and "squash" in notes.lower()
