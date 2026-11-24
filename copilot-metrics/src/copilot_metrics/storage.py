@@ -10,7 +10,7 @@ import duckdb
 
 from copilot_metrics.collectors import COLLECTOR_REVISION, collect, opaque
 from copilot_metrics.collectors.interruptions import collect_interruptions
-from copilot_metrics.git_history import commits_between, repository_root
+from copilot_metrics.git_history import commits_between, repository_root, rework_between
 from copilot_metrics.models import Collection
 
 
@@ -29,6 +29,10 @@ GIT_DIRECTORIES_TABLE = (
 GIT_COMMITS_TABLE = (
     "CREATE TABLE IF NOT EXISTS git_commits "
     "(repo VARCHAR, sha VARCHAR, committed_at VARCHAR, added BIGINT, deleted BIGINT)"
+)
+GIT_REWORK_TABLE = (
+    "CREATE TABLE IF NOT EXISTS git_rework "
+    "(repo VARCHAR, sha VARCHAR, origin_sha VARCHAR, lines BIGINT, committed_at VARCHAR)"
 )
 
 
@@ -156,6 +160,7 @@ class Store:
         if not self.git_enabled() or not self.has_table("git_session_dirs"):
             return
         self.connection.execute(GIT_COMMITS_TABLE)
+        self.connection.execute(GIT_REWORK_TABLE)
         spans = self.connection.execute(
             """
                 SELECT d.cwd, min(e.timestamp), max(e.timestamp) FROM git_session_dirs d
@@ -180,6 +185,19 @@ class Store:
                 self.connection.executemany(
                     "INSERT INTO git_commits VALUES (?, ?, ?, ?, ?)",
                     [(repo, commit.sha, commit.committed_at, commit.added, commit.deleted) for commit in commits],
+                )
+            self.connection.execute("DELETE FROM git_rework WHERE repo = ?", [repo])
+            rework = rework_between(
+                root=root,
+                origins=commits,
+                since=min(first for first, _ in windows),
+                until=max(last for _, last in windows),
+                idle_minutes=idle_minutes,
+            )
+            if rework:
+                self.connection.executemany(
+                    "INSERT INTO git_rework VALUES (?, ?, ?, ?, ?)",
+                    [(repo, edge.sha, edge.origin_sha, edge.lines, edge.committed_at) for edge in rework],
                 )
             self.connection.executemany(
                 "UPDATE git_session_dirs SET repo = ? WHERE cwd = ?",
