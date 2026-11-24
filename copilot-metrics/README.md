@@ -91,6 +91,10 @@ order alone; prompt text is never read, so a reaction is not confirmed. `reactiv
 follow-up prompts attributed to a trigger. Unavailable signals are blank, not zero. No new import is needed beyond
 collector revision 6.
 
+Git access is off by default. `copilot-metrics git enable` stores one switch in the database's `settings` table;
+`copilot-metrics git disable` turns it off and purges every stored Git table (any table named `git_*`), leaving usage
+data untouched. The switch alone reads nothing from Git yet: later increments add the commit read that honours it.
+
 `cost` is an estimate at per-million-token rates you supply in `prices.toml` (default: working
 directory); it is not your bill, and Copilot actually bills by premium request. Key each model
 exactly as recorded (Copilot `claude-sonnet-5.5`, Claude `claude-sonnet-5-5`):

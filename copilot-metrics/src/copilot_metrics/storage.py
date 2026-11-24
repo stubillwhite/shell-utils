@@ -45,6 +45,7 @@ class Store:
                     output_tokens BIGINT, cached_input_tokens BIGINT, cache_creation_tokens BIGINT,
                     reasoning_tokens BIGINT, tool VARCHAR, child BOOLEAN
                 );
+                CREATE TABLE IF NOT EXISTS settings (name VARCHAR PRIMARY KEY, value VARCHAR);
                 CREATE TABLE IF NOT EXISTS diagnostics (
                     source_id VARCHAR, provider VARCHAR, line BIGINT, code VARCHAR
                 );
@@ -61,6 +62,27 @@ class Store:
                 ) = 1;
             """
         )
+
+    def git_enabled(self: "Store") -> bool:
+        try:
+            row = self.connection.execute("SELECT value FROM settings WHERE name = 'git_enabled'").fetchone()
+        except duckdb.CatalogException:
+            return False
+        return row is not None and row[0] == "on"
+
+    def set_git_enabled(self: "Store", enabled: bool) -> None:
+        self.connection.execute(
+            "INSERT OR REPLACE INTO settings VALUES ('git_enabled', ?)", ["on" if enabled else "off"]
+        )
+        if not enabled:
+            self.purge_git_data()
+
+    def purge_git_data(self: "Store") -> None:
+        names = self.connection.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_name LIKE 'git\\_%' ESCAPE '\\'"
+        ).fetchall()
+        for (name,) in names:
+            self.connection.execute(f'DROP TABLE "{name}"')
 
     def __enter__(self: "Store") -> "Store":
         return self

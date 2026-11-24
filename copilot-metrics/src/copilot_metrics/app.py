@@ -108,6 +108,9 @@ def parser() -> argparse.ArgumentParser:
                 choices=("Notification", "PermissionRequest", "PreToolUse", "ElicitationResult"),
                 required=True,
             )
+    git = commands.add_parser("git", help="Opt in or out of reading Git history. Disabling purges stored Git data.")
+    git.add_argument("action", choices=("enable", "disable"))
+    git.add_argument("--db", type=Path, default=Path("metrics.duckdb"))
     installer = commands.add_parser("install-interruption-hooks", help="Merge recorder hooks into global configs.")
     installer.add_argument("--provider", choices=PROVIDERS, help="Defaults to all three providers.")
     installer.add_argument("--log-dir", type=Path, help="Defaults to ~/.local/state/copilot-metrics.")
@@ -128,6 +131,15 @@ def execute(args: argparse.Namespace) -> int:
         if len(content) > 1_048_576:
             raise ValueError("hook_input_too_large")
         record_hook(provider=args.provider, event=args.event, payload=json.loads(content), output=args.output)
+        return 0
+    if args.command == "git":
+        with Store(args.db) as store:
+            store.set_git_enabled(args.action == "enable")
+        print(
+            "Git access enabled."
+            if args.action == "enable"
+            else "Git access disabled and all stored Git data purged. Usage data is untouched."
+        )
         return 0
     if args.command == "dashboard":
         return launch(args.db)
