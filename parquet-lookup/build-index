@@ -101,7 +101,7 @@ mhub_ipr() {
 
 rdp_ipr() {
     index_args "rdp-ipr-${RDP_VERSION:0:8}" id xml us-east-2 \
-        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/ipr/output/three_column/${RDP_VERSION}/"
+        "s3://sccontent-prod-corecomplete-xocs-us-east-2/prod/xocs/IPR/output/three_column/${RDP_VERSION}/"
 }
 
 ## OpenAlex                                                                 {{{1
@@ -132,8 +132,9 @@ PRESETS=(
     rdp_ani_non_core
     rdp_apr
     rdp_ihr
-    mhub_openalex_ani
-    rdp_openalex_ani
+    rdp_ipr
+    # mhub_openalex_ani
+    # rdp_openalex_ani
 )
 
 ## Script                                                                   {{{1

@@ -58,6 +58,20 @@ EXPECTED = {
         "us-east-2",
         [f"{RDP_ROOT}/xocs/APR/output/three_column/20990202-111111/"],
     ),
+    "mhub_ipr": (
+        "mhub-ipr-20990101",
+        "key",
+        "xml",
+        "us-east-1",
+        ["s3://sccontent-staging-corecomplete-xocs/sccontent-ipr-parquet-prod/20990101/"],
+    ),
+    "rdp_ipr": (
+        "rdp-ipr-20990202",
+        "id",
+        "xml",
+        "us-east-2",
+        [f"{RDP_ROOT}/xocs/IPR/output/three_column/20990202-111111/"],
+    ),
     "mhub_openalex_ani": (
         "mhub-openalex-ani-20990303",
         "EID",

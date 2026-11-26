@@ -29,7 +29,6 @@ OPENALEX_DATASETS=(
 )
 
 OPENALEX_IDS=(
-84934895772
 )
 
 datasetPath="example-data"
