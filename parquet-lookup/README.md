@@ -26,20 +26,28 @@ The MHub and RDP versions used by every helper script (`build-index`, `download-
 file, `data-versions`:
 
 ```bash
-MHUB_VERSION=20260825
-RDP_VERSION=20261016-094451
+MHUB_VERSION=20261110
+RDP_VERSION=20261124-112213
 MHUB_OPENALEX_VERSION=20260629-073848
 RDP_OPENALEX_VERSION=20261005-200000
 RDP_EKB_VERSION=20261016-094451
-MHUB_ANI_NON_CORE_VERSION=20260824
-RDP_ANI_NON_CORE_VERSION=20261016-094451
+MHUB_ANI_NON_CORE_VERSION=20261110
+RDP_ANI_NON_CORE_VERSION=20261124-112213
 ```
 
 To move every tool to a new data drop, edit these values and run `./build-index`. The full value selects the S3
 prefix, while its first eight characters (the date) determine dataset and database names, for example
-`rdp-ani-20261016.duckdb`. RDP ANI Core, Non-scopus-publication and Preprint all use `RDP_VERSION`.
+`rdp-ani-20261124.duckdb`. RDP ANI Core, Non-scopus-publication and Preprint all use `RDP_VERSION`.
 RDP ANI non-core indexes the separate Dummy output using `RDP_ANI_NON_CORE_VERSION`.
 MHub ANI non-core uses `s3://sccontent-staging-corecomplete-xocs/sccontent-anidummy-parquet-prod/` with `MHUB_ANI_NON_CORE_VERSION`.
+
+The MHub data is temporarily read from the staging snapshot location
+`s3://sccontent-staging-corecomplete-xocs/sccontent-<dataset>-parquet-prod/<version>/`.
+`../cc-list-mhub-data-sets.py` lists that location while `USE_MHUB_SNAPSHOT_LOCATION` is `True`; set it to `False`
+to list the original `s3://sccontent-<dataset>-parquet-prod/` buckets again. Run
+`grep -rn USE_MHUB_SNAPSHOT_LOCATION ..` to find everything to remove when the snapshot location is retired.
+`./build-index` already reads the staging location, so switching back there means editing its S3 paths.
+
 `MHUB_OPENALEX_VERSION` is `<date>-<time>` and selects the single file
 `s3://mhub-d2m-export-parquet-prod/ANI/<date>/Ani_Eid_XML_<date>_<time>.parquet`.
 
@@ -115,7 +123,7 @@ make run-key-counts
 Run `./download-example-data` from this directory after building the selected indexes. It creates
 `example-data/<dataset>/` directories for ANI, APR, and OpenAlex ANI, downloads and formats the configured XML
 records, and skips existing nonempty files. Dataset names come from `data-versions` and use only the date, even
-when the indexed S3 prefix contains a full timestamp (for example, `rdp-apr-20261016` for `20261016-094451`).
+when the indexed S3 prefix contains a full timestamp (for example, `rdp-apr-20261124` for `20261124-112213`).
 
 ## Collect samples for upload ##
 

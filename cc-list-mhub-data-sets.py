@@ -6,13 +6,25 @@ import cc_data_sets
 
 DATE_PATTERN = re.compile(r"^\d{8}$")
 
-ENRICHED = {
-    "ANI": "s3://sccontent-ani-parquet-prod/",
-    "ANI dummy": "s3://sccontent-anidummy-parquet-prod/",
-    "APR": "s3://sccontent-apr-parquet-prod/",
-    "IPR": "s3://sccontent-ipr-parquet-prod/",
-    "IH": "s3://sccontent-ih-parquet-prod/",
+USE_MHUB_SNAPSHOT_LOCATION = True
+
+SNAPSHOT_ROOT = "s3://sccontent-staging-corecomplete-xocs/"
+
+ENRICHED_BUCKETS = {
+    "ANI": "sccontent-ani-parquet-prod",
+    "ANI dummy": "sccontent-anidummy-parquet-prod",
+    "APR": "sccontent-apr-parquet-prod",
+    "IPR": "sccontent-ipr-parquet-prod",
+    "IH": "sccontent-ih-parquet-prod",
 }
+
+
+def enriched_paths(use_snapshot_location):
+    root = SNAPSHOT_ROOT if use_snapshot_location else "s3://"
+    return {name: f"{root}{bucket}/" for name, bucket in ENRICHED_BUCKETS.items()}
+
+
+ENRICHED = enriched_paths(use_snapshot_location=USE_MHUB_SNAPSHOT_LOCATION)
 
 PARSED = {
     "ANI core": "s3://sccontent-parsed-ani-core-parquet-prod/",
@@ -23,7 +35,7 @@ PARSED = {
 
 GROUPS = [
     ("MHub/XFAB: Two column XOCS enriched Parquet", ENRICHED),
-    ("MHub/XFAB: Parsed Parquet", PARSED),
+    #  ("MHub/XFAB: Parsed Parquet", PARSED),
 ]
 
 

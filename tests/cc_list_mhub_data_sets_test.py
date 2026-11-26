@@ -11,7 +11,7 @@ spec.loader.exec_module(mod)
 class ConfigTest(unittest.TestCase):
     def test_enriched_group_buckets_in_order(self):
         self.assertEqual(
-            mod.ENRICHED,
+            mod.enriched_paths(use_snapshot_location=False),
             {
                 "ANI": "s3://sccontent-ani-parquet-prod/",
                 "ANI dummy": "s3://sccontent-anidummy-parquet-prod/",
@@ -19,6 +19,24 @@ class ConfigTest(unittest.TestCase):
                 "IPR": "s3://sccontent-ipr-parquet-prod/",
                 "IH": "s3://sccontent-ih-parquet-prod/",
             },
+        )
+
+    def test_snapshot_location_lists_the_staging_bucket_that_build_index_reads(self):
+        self.assertEqual(
+            mod.enriched_paths(use_snapshot_location=True),
+            {
+                "ANI": "s3://sccontent-staging-corecomplete-xocs/sccontent-ani-parquet-prod/",
+                "ANI dummy": "s3://sccontent-staging-corecomplete-xocs/sccontent-anidummy-parquet-prod/",
+                "APR": "s3://sccontent-staging-corecomplete-xocs/sccontent-apr-parquet-prod/",
+                "IPR": "s3://sccontent-staging-corecomplete-xocs/sccontent-ipr-parquet-prod/",
+                "IH": "s3://sccontent-staging-corecomplete-xocs/sccontent-ih-parquet-prod/",
+            },
+        )
+
+    def test_enriched_follows_the_snapshot_switch(self):
+        self.assertEqual(
+            mod.ENRICHED,
+            mod.enriched_paths(use_snapshot_location=mod.USE_MHUB_SNAPSHOT_LOCATION),
         )
 
     def test_parsed_group_buckets_in_order(self):
